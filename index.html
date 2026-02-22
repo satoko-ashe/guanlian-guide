@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>知云管理平台</title>
+    <meta name="description" content="知云管理平台 - 后台管理平台统一入口" />
+    <meta name="Keywords" content="便捷办公的好伙伴" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- 天气独立模块 -->
+    <script src="weather.js"></script>
+    <script src="bookmark-data.js"></script>  <!-- 新增：统一标签数据 -->
+</head>
+<body>
+    <!-- 顶部快捷导航 -->
+    <div class="shortcut">
+        <div class="w clearfix">
+            <div class="fl">
+                <ul>
+                    <li><strong>知云管理平台欢迎您！</strong></li>
+                    <li><a href="#">首页</a></li>
+                    <li class="spacer"></li>
+                    <li class="language-shortcut-dropdown">
+                        <a href="javascript:void(0);">辞海</a>
+                        <div class="language-shortcut-dropdown-menu">
+                            <div class="language-shortcut-item" data-lang="english" data-url="https://corp.dict.cn/">
+                                <i class="fas fa-globe"></i> 英语词典
+                            </div>
+                            <div class="language-shortcut-item" data-lang="japanese" data-url="https://dict.asia/">
+                                <i class="fas fa-globe-asia"></i> 日语词典
+                            </div>
+                            <div class="language-shortcut-item has-submenu">
+                                <i class="fas fa-language"></i> 汉语词典
+                                <i class="fas fa-chevron-right submenu-arrow"></i>
+                                <div class="language-submenu">
+                                    <div class="language-submenu-item" data-url="https://www.cidianwang.com/cd/">词典网</div>
+                                    <div class="language-submenu-item" data-url="https://www.zdic.net/">汉典网</div>
+                                    <div class="language-submenu-item" data-url="https://zh.voicedic.com/">汉方言发音词典</div> 
+                                </div>
+                            </div>
+                            <div class="language-shortcut-item" data-lang="cantonese" data-url="https://shyyp.net/">
+                                <i class="fas fa-comments"></i> 粤语词典
+                            </div>
+                            <div class="language-shortcut-item" data-lang="chaozhou" data-url="http://www.laimn.cn/">
+                                <i class="fas fa-comment"></i> 闽南语在线翻译
+                            </div>
+                            <div class="language-shortcut-item has-submenu">
+                                <i class="fas fa-language"></i> 潮州话词典
+                                <i class="fas fa-chevron-right submenu-arrow"></i>
+                                <div class="language-submenu">
+                                    <div class="language-submenu-item" data-url="https://www.mogher.com/">潮州母语字典</div>
+                                    <div class="language-submenu-item" data-url="http://www.czyzd.com/">潮州音字典</div>
+                                </div>
+                            </div>
+                            <div class="language-shortcut-item" data-lang="hakka" data-url="https://www.syndict.com/index.htm">
+                                <i class="fas fa-users"></i> 客家话词典
+                            </div>
+                            <div class="language-shortcut-item has-submenu">
+                                <i class="fas fa-language"></i> 我的DIY词典
+                                <i class="fas fa-chevron-right submenu-arrow"></i>
+                                <div class="language-submenu">
+                                    <div class="language-submenu-item" data-url="https://satoko-ashe.github.io/chaozhouzidian.github.io/">潮州话在线词典</div>
+                                    <div class="language-submenu-item" data-url="https://satoko-ashe.github.io/tree/">树状图字典网</div>
+                                    <div class="language-submenu-item" data-url="https://satoko-ashe.github.io/chaozhou-audio-library/">潮州话发音录音库</div>
+                                    <div class="language-submenu-item" data-url="https://satoko-ashe.github.io/translator/">潮州话离线翻译器</div>
+                                    <div class="language-submenu-item" data-url="https://satoko-ashe.github.io/suyuan/">方言溯源查询字典</div>
+                                </div>
+                            </div>
+                            <div class="language-shortcut-item has-submenu">
+                                <i class="fas fa-globe"></i> 外语词典
+                                <i class="fas fa-chevron-right submenu-arrow"></i>
+                                <div class="language-submenu">
+                                    <div class="language-submenu-item" data-url="https://fanyi.youdao.com/">有道词典</div>
+                                    <div class="language-submenu-item" data-url="https://dict.hjenglish.com/">沪江小D词典</div>
+                                    <div class="language-submenu-item" data-url="https://www.iciba.com/">iCIBA词典</div>
+                                    <div class="language-submenu-item" data-url="https://www.collinsdictionary.com/zh/dictionary/chinese-english/">柯林斯汉英词典</div>
+                                    <div class="language-submenu-item" data-url="https://www.frdic.com/">法语助手</div>
+                                    <div class="language-submenu-item" data-url="https://dict.asia/jc/">dict.中日词典</div>
+                                    <div class="language-submenu-item" data-url="https://www.thai-language.com/">泰语字典</div>
+                                    <div class="language-submenu-item" data-url="https://zgdict.com/">越南语-汉语</div>
+                                    <div class="language-submenu-item" data-url="http://kr.qsbdc.com/krword2/wl.php?level=13">英日韩德西法</div>
+                                    <div class="language-submenu-item" data-url="https://www.dict.com/">36种语言词典</div>
+                                </div>
+                            </div>
+                            <div class="language-shortcut-item has-submenu">
+                                <i class="fas fa-ellipsis-h"></i> 其他词典
+                                <i class="fas fa-chevron-right submenu-arrow"></i>
+                                <div class="language-submenu">
+                                    <div class="language-submenu-item" data-url="http://xh.5156edu.com/">新华字典</div>
+                                    <div class="language-submenu-item" data-url="https://so.gushiwen.cn/">古诗文网</div>
+                                </div>
+                            </div>
+                        </div>
+                    </li>
+                    <li class="spacer"></li>
+                    <li class="favorites-dropdown">
+                        <a href="javascript:void(0);">收藏</a>
+                        <div class="favorites-dropdown-menu"></div>
+                    </li>
+                    <li class="spacer"></li>
+                    <li class="history-dropdown">
+                        <a href="javascript:void(0);">历史记录</a>
+                        <div class="history-dropdown-menu">
+                            <div class="history-dropdown-item" data-type="local" data-path="D:\data数据库-历史记录">
+                                <i class="fas fa-database"></i> 本地数据库
+                            </div>
+                            <div class="history-dropdown-item" data-type="online" data-url="https://pan.baidu.com/disk/main#/index?category=all">
+                                <i class="fas fa-cloud"></i> 在线数据库
+                            </div>
+                        </div>
+                    </li>
+                    <li class="spacer"></li>
+                    <li class="notepad-dropdown">
+                        <a href="javascript:void(0);">记事本</a>
+                        <ul class="notepad-dropdown-menu">
+                            <li class="notepad-dropdown-item"><a href="#">备忘录</a></li>
+                            <li class="notepad-dropdown-item"><a href="https://www.kdocs.cn/latest" target="_blank">WPS网页版</a></li>
+                            <li class="notepad-dropdown-item"><a href="https://note.wps.cn/" target="_blank">WPS便签</a></li>
+                        </ul>
+                    </li>
+                    <li class="spacer"></li>
+                    <li class="email-dropdown">
+                        <a href="javascript:void(0);">我的邮箱</a>
+                        <div class="email-dropdown-menu">
+                            <div class="email-dropdown-item" id="add-email-btn">
+                                <i class="fas fa-plus"></i>
+                            </div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+            <div class="fr">
+                <ul>
+                    <li><a href="javascript:void(0);" id="workbench-btn">工作台</a></li>
+                    <li class="spacer"></li>
+                    <li><a href="javascript:void(0);" id="database-btn">资料库</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 常用工具栏 -->
+    <div class="w gd-container">
+        <div class="gd-header" id="gd-header">
+            常用工具栏
+            <div class="time-weather" id="time-weather">
+                <div class="current-time" id="current-time">2026年2月22日 星期日 14:30:25</div>
+                <div class="weather-info" id="weather-info">
+                    <span class="weather-icon" id="weather-icon">☀️</span>
+                    <span class="temperature" id="temperature">广州 28°C</span>
+                </div>
+            </div>
+            <i class="fas fa-tools"></i>
+        </div>
+        <div class="gd" id="gd-content">
+            <div class="gd-columns" id="gd-columns">
+                <!-- 娱乐网站 -->
+                <div class="gd-column" id="entertainment-column">
+                    <h3>娱乐网站 <span class="edit-title-btn" data-column="entertainment">编辑名称</span></h3>
+                    <div class="gd-column-content">
+                        <div class="gd-list" id="entertainment-list"></div>
+                        <div class="add-item-btn" data-column="entertainment">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <div class="add-item-form" id="entertainment-form">
+                            <input type="text" class="item-name" placeholder="网站名称">
+                            <input type="text" class="item-url" placeholder="网站链接">
+                            <textarea class="item-note" placeholder="备注信息（可填写账号密码等信息）"></textarea>
+                            <div class="form-buttons">
+                                <button class="save-btn" data-column="entertainment">保存</button>
+                                <button class="cancel-btn" data-column="entertainment">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 便捷工具 -->
+                <div class="gd-column" id="tools-column">
+                    <h3>便捷工具 <span class="edit-title-btn" data-column="tools">编辑名称</span></h3>
+                    <div class="gd-column-content">
+                        <div class="gd-list" id="tools-list"></div>
+                        <div class="add-item-btn" data-column="tools">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <div class="add-item-form" id="tools-form">
+                            <input type="text" class="item-name" placeholder="工具名称">
+                            <input type="text" class="item-url" placeholder="工具链接">
+                            <textarea class="item-note" placeholder="备注信息（可填写账号密码等信息）"></textarea>
+                            <div class="form-buttons">
+                                <button class="save-btn" data-column="tools">保存</button>
+                                <button class="cancel-btn" data-column="tools">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 我的网盘 -->
+                <div class="gd-column" id="cloud-column">
+                    <h3>我的网盘 <span class="edit-title-btn" data-column="cloud">编辑名称</span></h3>
+                    <div class="gd-column-content">
+                        <div class="gd-list" id="cloud-list"></div>
+                        <div class="add-item-btn" data-column="cloud">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <div class="add-item-form" id="cloud-form">
+                            <input type="text" class="item-name" placeholder="网盘名称">
+                            <input type="text" class="item-url" placeholder="网盘链接">
+                            <textarea class="item-note" placeholder="备注信息（可填写账号密码等信息）"></textarea>
+                            <div class="form-buttons">
+                                <button class="save-btn" data-column="cloud">保存</button>
+                                <button class="cancel-btn" data-column="cloud">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 必备网站 -->
+                <div class="gd-column" id="essential-column">
+                    <h3>必备网站 <span class="edit-title-btn" data-column="essential">编辑名称</span></h3>
+                    <div class="gd-column-content">
+                        <div class="gd-list" id="essential-list"></div>
+                        <div class="add-item-btn" data-column="essential">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <div class="add-item-form" id="essential-form">
+                            <input type="text" class="item-name" placeholder="网站名称">
+                            <input type="text" class="item-url" placeholder="网站链接">
+                            <textarea class="item-note" placeholder="备注信息（可填写账号密码等信息）"></textarea>
+                            <div class="form-buttons">
+                                <button class="save-btn" data-column="essential">保存</button>
+                                <button class="cancel-btn" data-column="essential">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 办公常用 -->
+                <div class="gd-column" id="office-column">
+                    <h3>办公常用 <span class="edit-title-btn" data-column="office">编辑名称</span></h3>
+                    <div class="gd-column-content">
+                        <div class="gd-list" id="office-list"></div>
+                        <div class="add-item-btn" data-column="office">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <div class="add-item-form" id="office-form">
+                            <input type="text" class="item-name" placeholder="网站名称">
+                            <input type="text" class="item-url" placeholder="网站链接">
+                            <textarea class="item-note" placeholder="备注信息（可填写账号密码等信息）"></textarea>
+                            <div class="form-buttons">
+                                <button class="save-btn" data-column="office">保存</button>
+                                <button class="cancel-btn" data-column="office">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 考试专用 -->
+                <div class="gd-column" id="exam-column">
+                    <h3>考试专用 <span class="edit-title-btn" data-column="exam">编辑名称</span></h3>
+                    <div class="gd-column-content">
+                        <div class="gd-list" id="exam-list"></div>
+                        <div class="add-item-btn" data-column="exam">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <div class="add-item-form" id="exam-form">
+                            <input type="text" class="item-name" placeholder="网站名称">
+                            <input type="text" class="item-url" placeholder="网站链接">
+                            <textarea class="item-note" placeholder="备注信息（可填写账号密码等信息）"></textarea>
+                            <div class="form-buttons">
+                                <button class="save-btn" data-column="exam">保存</button>
+                                <button class="cancel-btn" data-column="exam">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 头部区域 -->
+    <div class="header w">
+        <a href="https://www.sogou.com/" class="logo" target="_blank">
+            <div class="logo-text">知云管理平台</div>
+            <div class="logo-pinyin">smart management</div>
+        </a>
+        
+        <div class="search-container">
+            <div class="search">
+                <input type="text" class="text" value="搜索任务...">
+                <button class="btn"><b>搜索</b></button>
+                <div class="manage-btn" id="manage-btn">
+                    管理仓 <i class="fas fa-warehouse"></i>
+                    <div class="manage-dropdown" id="manage-dropdown">
+                        <div class="manage-dropdown-item" id="import-item">
+                            <i class="fas fa-file-import"></i> 导入
+                            <div class="import-submenu" id="import-submenu">
+                                <div class="import-submenu-item" data-type="languages-import">
+                                    <i class="fas fa-globe"></i> 多国语言词库
+                                </div>
+                                <div class="import-submenu-item" data-type="dialects-import">
+                                    <i class="fas fa-language"></i> 汉语方言词库
+                                </div>
+                                <div class="import-submenu-item" data-type="all-import">
+                                    <i class="fas fa-database"></i> 导入全部数据
+                                </div>
+                            </div>
+                        </div>
+                        <div class="manage-dropdown-item" id="export-item">
+                            <i class="fas fa-file-export"></i> 导出
+                            <div class="import-submenu" id="export-submenu">
+                                <div class="import-submenu-item" data-type="languages-export">
+                                    <i class="fas fa-globe"></i> 多国语言词库
+                                </div>
+                                <div class="import-submenu-item" data-type="dialects-export">
+                                    <i class="fas fa-language"></i> 汉语方言词库
+                                </div>
+                                <div class="import-submenu-item" data-type="local-export">
+                                    <i class="fas fa-database"></i> 导出本机数据
+                                </div>
+                            </div>
+                        </div>
+                        <div class="manage-dropdown-item" id="manage-languages-item">
+                            <i class="fas fa-edit"></i> 修改词库
+                        </div>
+                    </div>
+                </div>
+                <button class="recycle-btn" id="recycle-btn">
+                    回收站 <i class="fas fa-trash-alt"></i>
+                </button>
+                <!-- 紧急程度筛选按钮 -->
+                <div class="urgency-filter" id="urgency-filter">
+                    <span class="filter-btn" data-urgency="紧急">紧急</span>
+                    <span class="filter-btn" data-urgency="中等">中等</span>
+                    <span class="filter-btn" data-urgency="轻量">轻量</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 我的书架区域 -->
+        <div class="bookshelf-dropdown" id="bookshelf-container">
+            <div class="booth bookshelf-btn" id="bookshelf-btn">
+                <i class="fas fa-book"></i><a href="javascript:void(0);"><strong>我的书架</strong></a>
+                <div class="count" id="bookshelf-count">8</div>
+            </div>
+            <div class="bookshelf-dropdown-menu" id="bookshelf-dropdown-menu">
+                <div class="bookshelf-header">
+                    <h3>我的书架</h3>
+                    <button class="add-book-btn" id="add-book-btn">
+                        <i class="fas fa-plus"></i> 添加新书
+                    </button>
+                </div>
+                <div class="bookshelf-list" id="bookshelf-list"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 轮播器 -->
+    <div class="hot-news-ticker w">
+        <div class="ticker-controls-container">
+            <div class="ticker-label" id="ticker-label">
+                <i class="fas fa-broadcast-tower"></i>
+            </div>
+            <div class="ticker-buttons-group">
+                <button class="ticker-btn" id="speed-btn" title="速度" data-speed-index="0">
+                    <i class="fas fa-tachometer-alt"></i>
+                </button>
+                <button class="ticker-btn" id="import-btn" title="导入">
+                    <i class="fas fa-file-import"></i>
+                </button>
+                <button class="ticker-btn" id="play-pause-btn" title="播放/停止">
+                    <i class="fas fa-pause"></i>
+                </button>
+            </div>
+        </div>
+        <div class="ticker-content">
+            <div class="ticker-list" id="ticker-list"></div>
+        </div>
+    </div>
+    
+    <!-- 主体内容 - 三栏布局 -->
+    <div class="w main-content">
+        <!-- 左侧边栏 - 运营管理（使用相对路径指向 left-panel 文件夹） -->
+        <div class="left-sidebar">
+            <div class="panel">
+                <div class="panel-title">运营管理</div>
+                <div class="panel-content">
+                    <ul>
+                        <li class="panel-item" data-url="left-panel/admin.html"><i class="fas fa-calendar-alt"></i><a href="#">工作排班</a></li>
+                        <li class="panel-item" data-url="left-panel/masterTable.html"><i class="fas fa-table"></i><a href="#">运营大表</a></li>
+                        <li class="panel-item" data-url="left-panel/autoNote.html"><i class="fas fa-pen"></i><a href="#">自动记单</a></li>
+                        <li class="panel-item" data-url="left-panel/wechat.html"><i class="fas fa-comments"></i><a href="#">云聊天室</a></li>
+                        <li class="panel-item" data-url="left-panel/meeting.html"><i class="fas fa-video"></i><a href="#">会议记录</a></li>
+                        <li class="panel-item" data-url="left-panel/party.html"><i class="fas fa-people-arrows"></i><a href="#">团建备案</a></li>
+                        <li class="panel-item" data-url="left-panel/refund.html"><i class="fas fa-undo-alt"></i><a href="#">退费管控</a></li>
+                        <li class="panel-item" data-url="left-panel/Overseas.html"><i class="fas fa-globe-asia"></i><a href="#">产品资源</a></li>
+                        <li class="panel-item" data-url="left-panel/sale.html"><i class="fas fa-chart-line"></i><a href="#">二销跟进</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 中间内容区 - 合并的任务栏+详情面板 -->
+        <div class="center-content merged-task-panel">
+            <div class="task-panel-tabs">
+                <span class="tab active" data-tab="list">任务栏</span>
+                <span class="tab" data-tab="detail">任务详情</span>
+            </div>
+            <div class="task-panel-content">
+                <!-- 任务列表视图 -->
+                <div class="task-list-view active" id="task-list-view">
+                    <div class="task-list" id="task-list"></div>
+                    <!-- 底部状态选项卡 -->
+                    <div class="task-status-tabs">
+                        <span class="status-tab active" data-status="unread">待阅读</span>
+                        <span class="status-tab" data-status="read">已阅读</span>
+                        <span class="status-tab" data-status="completed">已完成</span>
+                    </div>
+                </div>
+                <!-- 任务详情视图 -->
+                <div class="task-detail-view" id="task-detail-view">
+                    <div class="task-detail-content" id="task-detail-content">
+                        <p>请从任务列表选择一项任务</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 右侧边栏 - 教务后台（使用相对路径指向 right-panel 文件夹） -->
+        <div class="right-sidebar">
+            <div class="panel">
+                <div class="panel-title">教务后台</div>
+                <div class="panel-content">
+                    <ul>
+                        <li class="panel-item" data-url="right-panel/calendar.html"><i class="fas fa-calendar"></i><a href="#">课程日历</a></li>
+                        <li class="panel-item" data-url="right-panel/course-admin.html"><i class="fas fa-chalkboard-teacher"></i><a href="#">课程管理</a></li>
+                        <li class="panel-item" data-url="right-panel/guide.html"><i class="fas fa-compass"></i><a href="#">管联指南</a></li>
+                        <li class="panel-item" data-url="right-panel/guide-admin.html"><i class="fas fa-cog"></i><a href="#">指南后台</a></li>
+                        <li class="panel-item" data-url="right-panel/schedule.html"><i class="fas fa-table"></i><a href="#">排课大表</a></li>
+                        <li class="panel-item" data-url="right-panel/transform.html"><i class="fas fa-exchange-alt"></i><a href="#">调课通知</a></li>
+                        <li class="panel-item" data-url="right-panel/study.html"><i class="fas fa-book-open"></i><a href="#">学习记录</a></li>
+                        <li class="panel-item" data-url="right-panel/inventory.html"><i class="fas fa-boxes"></i><a href="#">寄件库存</a></li>
+                        <li class="panel-item" data-url="right-panel/textbook.html"><i class="fas fa-book"></i><a href="#">教辅资料</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 底部区域 -->
+    <div class="footer">
+        <div class="w">
+            <div class="footer-content">
+                <div class="footer-links">
+                    <div class="footer-section">
+                        <h4 class="footer-section-title">关于我们</h4>
+                        <div class="footer-section-content">
+                            <ul>
+                                <li><a href="#" class="footer-about">关于本站</a></li>
+                                <li><a href="#">联系我们</a></li>
+                                <li><a href="#">加入我们</a></li>
+                                <li><a href="#">网站地图</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="footer-section">
+                        <h4 class="footer-section-title">帮助支持</h4>
+                        <div class="footer-section-content">
+                            <ul>
+                                <li><a href="#">客服热线</a></li>
+                                <li><a href="#">举报中心</a></li>
+                                <li><a href="#">漏洞提交</a></li>
+                                <li><a href="#">用户协议</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="footer-section">
+                        <h4 class="footer-section-title">网站功能</h4>
+                        <div class="footer-section-content">
+                            <ul>
+                                <li><a href="#">个人书架</a></li>
+                                <li><a href="#">辞海查询</a></li>
+                                <li><a href="#">多语字典</a></li>
+                                <li><a href="#">学习专区</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="footer-section">
+                        <h4 class="footer-section-title">关注我们</h4>
+                        <div class="footer-section-content">
+                            <ul>
+                                <li><a href="#"><span class="bilibili-icon"></span> B站有你</a></li>
+                                <li><a href="#"><i class="fab fa-weibo"></i> 新浪微博</a></li>
+                                <li><a href="#"><i class="fab fa-qq"></i> QQ文件</a></li>
+                                <li><a href="#"><i class="fas fa-envelope"></i> 邮箱交流</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="copyright">
+                    <p>Copyright &copy; 2026 知云管理平台 www.smartmanagement.com 版权所有</p>
+                    <p>本站所有内容仅供个人学习参考，如有侵犯您的权益，请联系我们删除。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 密码验证弹窗 -->
+    <div class="modal-overlay" id="password-modal">
+        <div class="modal-content">
+            <button class="modal-close" id="close-password-modal">&times;</button>
+            <h2 class="modal-title">密码验证</h2>
+            <div class="modal-text">请输入密码进行操作：</div>
+            <input type="password" class="password-input" id="password-input" placeholder="请输入密码">
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="manage-btn" id="verify-password-btn" style="width: 150px;"><i class="fas fa-check"></i> 验证</button>
+                <button class="recycle-btn" id="cancel-password-btn" style="width: 150px; margin-left: 10px;"><i class="fas fa-times"></i> 取消</button>
+            </div>
+            <div id="password-error" style="color: #e60012; margin-top: 10px; text-align: center; display: none;">密码错误，请重试！</div>
+        </div>
+    </div>
+    
+    <!-- 备注信息弹窗 -->
+    <div class="modal-overlay" id="note-modal">
+        <div class="modal-content">
+            <button class="modal-close" id="close-note-modal">&times;</button>
+            <h2 class="modal-title" id="note-modal-title">备注信息</h2>
+            <div class="modal-text" id="note-info"></div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="recycle-btn" id="close-note-btn" style="width: 150px;"><i class="fas fa-times"></i> 关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 关于我们弹窗 -->
+    <div class="modal-overlay" id="about-modal">
+        <div class="modal-content">
+            <button class="modal-close" id="close-modal">&times;</button>
+            <h2 class="modal-title">关于知云管理平台</h2>
+            <div class="modal-text">知云管理平台是一个专注于多维度办公的在线平台。</div>
+            <div class="modal-text">我们的特色：集成智慧云办公，减轻牛马工作量。</div>
+            <div class="modal-text">平台致力于打造一个集办公、交流、查询于一体的智能平台，提供便捷工具，为用户提供优质内容。</div>
+            <div class="modal-text">知云管理平台欢迎您的加入，与我们一同探索智慧办公的无限可能。</div>
+        </div>
+    </div>
+    
+    <!-- 修改区块名称弹窗 -->
+    <div class="modal-overlay" id="column-name-modal">
+        <div class="modal-content">
+            <button class="modal-close" id="close-column-name-modal">&times;</button>
+            <h2 class="modal-title">修改区块名称</h2>
+            <div class="modal-text">请输入新的区块名称：</div>
+            <input type="text" class="column-name-input" id="column-name-input" placeholder="请输入区块名称">
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="manage-btn" id="save-column-name-btn" style="width: 150px;"><i class="fas fa-check"></i> 保存</button>
+                <button class="recycle-btn" id="cancel-column-name-btn" style="width: 150px; margin-left: 10px;"><i class="fas fa-times"></i> 取消</button>
+            </div>
+            <div id="column-name-error" style="color: #e60012; margin-top: 10px; text-align: center; display: none;">区块名称不能为空！</div>
+        </div>
+    </div>
+    
+    <!-- 热点导入弹窗 -->
+    <div class="modal-overlay" id="hot-import-modal">
+        <div class="hot-import-modal-content">
+            <button class="modal-close" id="close-hot-import-modal">&times;</button>
+            <h2 class="modal-title">热点内容导入</h2>
+            <div class="modal-text">请选择要上传的文件或文件夹：</div>
+            <div class="file-upload-area" id="hot-file-upload-area">
+                <i class="fas fa-file-upload"></i>
+                <p>点击或拖拽文件到此处上传</p>
+                <p>支持文本文件 (.txt)</p>
+                <input type="file" class="file-input" id="hot-file-input" accept=".txt" multiple>
+            </div>
+            <div class="folder-upload-area" id="hot-folder-upload-area">
+                <i class="fas fa-folder-open"></i>
+                <p>点击选择文件夹批量导入</p>
+                <p>支持文本文件 (.txt)</p>
+                <input type="file" class="folder-input" id="hot-folder-input" webkitdirectory mozdirectory accept=".txt">
+            </div>
+            <div class="preview-area" id="preview-area" style="display: none;">
+                <div class="preview-title">预览内容：</div>
+                <div id="preview-content"></div>
+            </div>
+            <div class="file-list" id="hot-file-list"></div>
+            <div style="text-align: center; margin-top: 20px; display: flex; justify-content: center; gap: 10px;">
+                <button class="manage-btn" id="select-file-btn" style="width: 120px;"><i class="fas fa-folder-open"></i> 选择文件</button>
+                <button class="manage-btn" id="save-hot-import-btn" style="width: 150px;"><i class="fas fa-save"></i> 保存并轮播</button>
+                <button class="recycle-btn" id="cancel-hot-import-btn" style="width: 150px;"><i class="fas fa-times"></i> 取消</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Excel导入弹窗 -->
+    <div class="modal-overlay" id="excel-import-modal">
+        <div class="modal-content">
+            <button class="modal-close" id="close-excel-import-modal">&times;</button>
+            <h2 class="modal-title" id="excel-import-title">Excel数据导入</h2>
+            <div class="modal-text" id="excel-import-text">请选择要导入的Excel文件：</div>
+            <div class="file-upload-area" id="excel-file-upload-area">
+                <i class="fas fa-file-excel"></i>
+                <p>点击或拖拽Excel文件到此处上传</p>
+                <p>支持 .xlsx, .xls 格式</p>
+                <input type="file" class="file-input" id="excel-file-input" accept=".xlsx,.xls">
+            </div>
+            <div class="file-list" id="excel-file-list"></div>
+            <div id="excel-preview" style="display: none;">
+                <h3>数据预览：</h3>
+                <div id="excel-preview-content" style="max-height: 300px; overflow-y: auto;"></div>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="manage-btn" id="import-excel-btn" style="width: 150px;"><i class="fas fa-file-import"></i> 导入数据</button>
+                <button class="recycle-btn" id="cancel-excel-import-btn" style="width: 150px; margin-left: 10px;"><i class="fas fa-times"></i> 取消</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 添加新书弹窗 -->
+    <div class="modal-overlay" id="add-book-modal">
+        <div class="modal-content">
+            <button class="modal-close" id="close-add-book-modal">&times;</button>
+            <h2 class="modal-title">添加新书籍</h2>
+            <div class="modal-text">请输入书籍信息：</div>
+            <input type="text" class="password-input" id="book-title-input" placeholder="书名">
+            <input type="text" class="password-input" id="book-url-input" placeholder="跳转链接">
+            <input type="text" class="password-input" id="book-note-input" placeholder="备注（可选）">
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="manage-btn" id="save-book-btn" style="width: 150px;"><i class="fas fa-check"></i> 保存</button>
+                <button class="recycle-btn" id="cancel-book-btn" style="width: 150px; margin-left: 10px;"><i class="fas fa-times"></i> 取消</button>
+            </div>
+            <div id="book-error" style="color: #e60012; margin-top: 10px; text-align: center; display: none;">书名和链接不能为空！</div>
+        </div>
+    </div>
+    
+        <!-- 引入脚本文件（注意顺序 - 已修复） -->
+    <script src="bookmark-data.js"></script>  <!-- 1. 先加载数据 -->
+    <script src="data.js"></script>           <!-- 2. 再加载状态数据 -->
+    <script src="weather.js"></script>        <!-- 3. 天气模块 -->
+    <script src="script-core.js"></script>     <!-- 4. 核心功能 -->
+    <script src="script-data-management.js"></script> <!-- 5. 数据管理功能 -->
+    <!-- script-dictionary.js 已移除 -->
+</body>
+</html>

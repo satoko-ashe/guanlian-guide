@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>运营登记大表 · 完整版（无员工表）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <style>
+        .table-scroll { overflow-x: auto; overflow-y: hidden; border: 1px solid #e2e8f0; border-radius: 0.375rem; margin-bottom: 0.5rem; }
+        .table-scroll table { border-collapse: collapse; width: max-content; min-width: 100%; }
+        .table-scroll thead { position: sticky; top: 0; background: #f7fafc; z-index: 10; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); }
+        .table-scroll th { text-align: center; font-weight: 600; background-color: #edf2f7; border: 1px solid #cbd5e0; padding: 0.5rem; font-size: 0.75rem; white-space: nowrap; }
+        .table-scroll td { text-align: left; border: 1px solid #cbd5e0; padding: 0.5rem; font-size: 0.75rem; white-space: nowrap; max-width: 250px; overflow: hidden; text-overflow: ellipsis; height: 35px; line-height: 35px; padding-top: 0; padding-bottom: 0; }
+        .is-select { width: 100%; border: none; background: transparent; font-size: 0.75rem; padding: 2px; border-radius: 4px; font-weight: 500; cursor: pointer; }
+        .is-select-yes { background-color: #10b981; color: white; }
+        .is-select-no { background-color: #ef4444; color: white; }
+        .is-select option { background: white; color: black; }
+        .editable-input, .editable-textarea { width: 100%; padding: 0.2rem; font-size: 0.7rem; border: 1px solid #9bb7d4; border-radius: 2px; }
+        .editable-textarea { min-height: 60px; resize: vertical; }
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000; }
+        .modal-content { background: white; padding: 1.5rem; border-radius: 0.5rem; width: 90%; max-width: 900px; max-height: 80vh; overflow-y: auto; }
+        .pagination { display: flex; gap: 0.5rem; align-items: center; justify-content: flex-end; margin-top: 0.5rem; font-size: 0.8rem; }
+        .pagination button { padding: 0.2rem 0.8rem; border: 1px solid #ccc; background: white; border-radius: 0.25rem; cursor: pointer; }
+        .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pagination input { width: 50px; text-align: center; border: 1px solid #ccc; border-radius: 0.25rem; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans p-4">
+
+<!-- 右上角导航 (与权限页保持一致) -->
+<div class="max-w-7xl mx-auto mb-2 flex justify-end space-x-3 text-sm">
+    <a href="autoNote.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-pen-fancy mr-1"></i>自动记单</a>
+    <a href="masterTable.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-table mr-1"></i>运营登记大表</a>
+    <a href="admin.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-lock mr-1"></i>管理权限</a>
+</div>
+
+<!-- 登录状态条 + 功能栏 (合并) -->
+<div class="max-w-7xl mx-auto mb-4 flex flex-wrap items-center justify-between gap-2 bg-white p-2 rounded shadow">
+    <div class="flex items-center space-x-2 text-sm">
+        <span class="text-gray-600"><i class="fas fa-database mr-1 text-blue-500"></i>本地PouchDB (与CouchDB实时同步)</span>
+        <span id="userDisplay2" class="hidden ml-2">👤 <span id="currentUserName2"></span></span>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+        <div class="relative flex items-center">
+            <i class="fas fa-search absolute left-2 top-2 text-gray-400 text-xs"></i>
+            <input type="text" id="searchInput" placeholder="筛选姓名/手机号/关键词" class="pl-7 pr-8 py-1 border rounded text-sm w-48">
+        </div>
+        <button id="fullscreenBtn" class="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-sm"><i class="fas fa-expand mr-1"></i>全屏</button>
+        <button id="exportFilteredBtn" class="bg-green-100 hover:bg-green-200 px-2 py-1 rounded text-sm"><i class="fas fa-download mr-1"></i>导出当前视图</button>
+        <button id="exportAllBtn" class="bg-purple-100 hover:bg-purple-200 px-2 py-1 rounded text-sm"><i class="fas fa-file-excel mr-1"></i>导出全部表格</button>
+        <button id="importBtn" class="bg-blue-100 hover:bg-blue-200 px-2 py-1 rounded text-sm"><i class="fas fa-upload mr-1"></i>导入</button>
+        <button id="showLoginBtn" class="bg-blue-500 text-white px-3 py-1 rounded text-sm"><i class="fas fa-sign-in-alt mr-1"></i>登录</button>
+        <button id="logoutBtn" class="bg-gray-300 px-3 py-1 rounded text-sm hidden">退出</button>
+    </div>
+</div>
+
+<!-- 八个表格的选项卡 (无员工表) -->
+<div class="max-w-7xl mx-auto bg-white p-4 rounded shadow">
+    <div class="flex flex-wrap border-b text-sm gap-1">
+        <button class="tab-btn px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-500" data-tab="student">📋 学员大表</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="invoice">🧾 发票表</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="mail">📦 邮寄表</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="afterSales">🛠️ 售后表</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="project">📁 项目类别</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="major">📚 专业代码</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="class">🏫 班级表</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="phrase">💬 记单话术</button>
+    </div>
+
+    <!-- 学员大表 -->
+    <div id="tab-student" class="tab-content block mt-2">
+        <div class="flex justify-between mb-1">
+            <span class="text-xs text-gray-500">共 <span id="studentCount">0</span> 行</span>
+            <button class="add-row-btn bg-indigo-50 text-indigo-700 px-3 py-0.5 rounded text-xs" data-db="students"><i class="fas fa-plus mr-1"></i>新增空白行</button>
+        </div>
+        <div id="studentTableContainer" class="table-scroll"></div>
+        <div id="studentPagination" class="pagination"></div>
+    </div>
+
+    <!-- 发票表 -->
+    <div id="tab-invoice" class="tab-content hidden mt-2">
+        <div class="flex justify-between mb-1"><span class="text-xs text-gray-500">共 <span id="invoiceCount">0</span> 行</span><button class="add-row-btn bg-indigo-50 text-indigo-700 px-3 py-0.5 rounded text-xs" data-db="invoices"><i class="fas fa-plus mr-1"></i>新增空白行</button></div>
+        <div id="invoiceTableContainer" class="table-scroll"></div>
+        <div id="invoicePagination" class="pagination"></div>
+    </div>
+
+    <!-- 邮寄表 -->
+    <div id="tab-mail" class="tab-content hidden mt-2">
+        <div class="flex justify-between mb-1"><span class="text-xs text-gray-500">共 <span id="mailCount">0</span> 行</span><button class="add-row-btn bg-indigo-50 text-indigo-700 px-3 py-0.5 rounded text-xs" data-db="mailings"><i class="fas fa-plus mr-1"></i>新增空白行</button></div>
+        <div id="mailTableContainer" class="table-scroll"></div>
+        <div id="mailPagination" class="pagination"></div>
+    </div>
+
+    <!-- 售后表 -->
+    <div id="tab-afterSales" class="tab-content hidden mt-2">
+        <div class="flex justify-between mb-1"><span class="text-xs text-gray-500">共 <span id="afterSalesCount">0</span> 行</span><button class="add-row-btn bg-indigo-50 text-indigo-700 px-3 py-0.5 rounded text-xs" data-db="after_sales"><i class="fas fa-plus mr-1"></i>新增空白行</button></div>
+        <div id="afterSalesTableContainer" class="table-scroll"></div>
+        <div id="afterSalesPagination" class="pagination"></div>
+    </div>
+
+    <!-- 项目类别表 -->
+    <div id="tab-project" class="tab-content hidden mt-2">
+        <div class="flex justify-between mb-1"><span class="text-xs text-gray-500">共 <span id="projectCount">0</span> 行</span><button class="add-row-btn bg-indigo-50 text-indigo-700 px-3 py-0.5 rounded text-xs" data-db="project_category"><i class="fas fa-plus mr-1"></i>新增空白行</button></div>
+        <div id="projectTableContainer" class="table-scroll"></div>
+        <div id="projectPagination" class="pagination"></div>
+    </div>
+
+    <!-- 专业代码表 -->
+    <div id="tab-major" class="tab-content hidden mt-2">
+        <div class="flex justify-between mb-1"><span class="text-xs text-gray-500">共 <span id="majorCount">0</span> 行</span><button class="add-row-btn bg-indigo-50 text-indigo-700 px-3 py-0.5 rounded text-xs" data-db="major_codes"><i class="fas fa-plus mr-1"></i>新增空白行</button></div>
+        <div id="majorTableContainer" class="table-scroll"></div>
+        <div id="majorPagination" class="pagination"></div>
+    </div>
+
+    <!-- 班级表 -->
+    <div id="tab-class" class="tab-content hidden mt-2">
+        <div class="flex justify-between mb-1"><span class="text-xs text-gray-500">共 <span id="classCount">0</span> 行</span><button class="add-row-btn bg-indigo-50 text-indigo-700 px-3 py-0.5 rounded text-xs" data-db="classes"><i class="fas fa-plus mr-1"></i>新增空白行</button></div>
+        <div id="classTableContainer" class="table-scroll"></div>
+        <div id="classPagination" class="pagination"></div>
+    </div>
+
+    <!-- 记单话术表 -->
+    <div id="tab-phrase" class="tab-content hidden mt-2">
+        <div class="flex justify-between mb-1"><span class="text-xs text-gray-500">共 <span id="phraseCount">0</span> 行</span><button class="add-row-btn bg-indigo-50 text-indigo-700 px-3 py-0.5 rounded text-xs" data-db="memo_phrase"><i class="fas fa-plus mr-1"></i>新增空白行</button></div>
+        <div id="phraseTableContainer" class="table-scroll"></div>
+        <div id="phrasePagination" class="pagination"></div>
+    </div>
+</div>
+
+<!-- 登录模态框 -->
+<div id="loginModal" class="modal hidden">
+    <div class="modal-content max-w-md">
+        <h3 class="text-lg font-bold mb-4">登录 (员工表，需启用账号)</h3>
+        <input id="loginUser" type="text" placeholder="账号" class="w-full border p-2 mb-2 rounded" value="管理员">
+        <input id="loginPass" type="password" placeholder="密码" class="w-full border p-2 mb-4 rounded" value="2026">
+        <div class="flex justify-end space-x-2">
+            <button id="closeLoginModal" class="px-4 py-2 bg-gray-300 rounded">取消</button>
+            <button id="loginBtn" class="px-4 py-2 bg-blue-600 text-white rounded">登录</button>
+        </div>
+    </div>
+</div>
+
+<!-- 行编辑弹窗 -->
+<div id="editModal" class="modal hidden">
+    <div class="modal-content">
+        <h3 class="text-lg font-bold mb-4" id="modalTitle">编辑行数据</h3>
+        <div id="modalFields" class="grid grid-cols-2 gap-3 text-sm max-h-[60vh] overflow-y-auto"></div>
+        <div class="flex justify-end space-x-2 mt-4">
+            <button id="closeModalBtn" class="px-4 py-2 bg-gray-300 rounded">取消</button>
+            <button id="saveModalBtn" class="px-4 py-2 bg-blue-600 text-white rounded">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // ---------- CouchDB 配置 ----------
+    const COUCHDB_URL = 'http://satoko:1793364876@localhost:5984'; // 请根据实际部署修改
+
+    // ---------- 数据库工厂 ----------
+    const createDB = (name) => {
+        const localDB = new PouchDB(name);
+        if (COUCHDB_URL) {
+            const remoteDB = new PouchDB(`${COUCHDB_URL}/${name}`);
+            localDB.sync(remoteDB, { live: true, retry: true })
+                .on('error', console.warn);
+        }
+        return localDB;
+    };
+
+    // ---------- PouchDB 实例 ----------
+    const dbStudents = createDB('students');
+    const dbInvoices = createDB('invoices');
+    const dbMailings = createDB('mailings');
+    const dbAfterSales = createDB('after_sales');
+    const dbProject = createDB('project_category');
+    const dbMajor = createDB('major_codes');
+    const dbClasses = createDB('classes');
+    const dbPhrase = createDB('memo_phrase');
+    const dbEmployees = createDB('employees'); // 仅用于登录验证
+
+    // ---------- 表头定义 ----------
+    const studentHeaders = ["归属主体","考期","班级","是否添加微信","是否发送新生资料","是否发送摸底考试","归属合作方","跟进人","归属班主任","记单时间","报名时间","学员报名手机号","其他手机号（非必填项）","学员姓名","身份证号","APP账号","APP密码","职业","订单金额","项目","所报班型","意向院校１","意向院校2（选填）","意向院校3（选填）","意向专业","最高学历","毕业年份","其他学历（非必填项）","其他学历获取时间（非必填项）","户籍所在地","购买社保所在省份","购买社保城市","购买社保时长","意向学习城市","邮箱","微信号","记单信息","备注","是否售后学员"];
+    const invoiceHeaders = ["归属主体","班主任","姓名","联系电话","身份证号","报考班型","招生部门","*发票类型","*开票主体（不填）","*开票金额","*发票抬头（个人则填姓名）","*纳税人识别号（个人则填身份证号）","公司地址及电话","开户行及账号","*收据号码","是否需要开具发票","申请人","申请时间","备注","开票人","发票号","开票时间","发票链接","是否发给学员"];
+    const mailHeaders = ["时间","归属主体","班主任","邮寄物品","学员姓名","收件人","收件人号码","收件人地址","是否需要邮寄","特殊备注","寄件人","寄件人号码","是否下单且寄送","寄件时间","快递单号","备注","代表班主任填写","代表寄件人填写"];
+    const afterSalesHeaders = ["序号","归属班主任","姓名","手机号","班型","身份证号","报名时间","首次提退时间","第几次提退","原因大类","原因小类","沟通记录1","沟通记录2","沟通记录3","是否转客诉受理","转客诉时间","客诉受理人","是否已劝挽","金牌规劝员","是否已退费","出款时间","退费金额"];
+    const projectHeaders = ["报读项目类别","项目1","项目2","项目3"];
+    const majorHeaders = ["专业代码","专业名称","专业简称","2025年国家线（A区）"];
+    const classHeaders = ["考期","班级","计划招生人数","实际报名人数","是否满员","是否停招新生"];
+    const phraseHeaders = ["序号","快捷标签","记单内容"];
+
+    // ---------- 默认数据 ----------
+    // 员工表（添加邮箱字段）
+    const defaultEmployees = [
+        { 账号:'管理员', 密码:'2026', 邮箱:'admin@example.com', 是否启用该账号:'是', 备注:'在职' },
+        { 账号:'李老师', 密码:'2025', 邮箱:'lisan@example.com', 是否启用该账号:'是', 备注:'在职' },
+        { 账号:'小小老师', 密码:'2025', 邮箱:'xiaoxiao@example.com', 是否启用该账号:'是', 备注:'在职' },
+        { 账号:'王老师', 密码:'2025', 邮箱:'wang@example.com', 是否启用该账号:'否', 备注:'离职' }
+    ];
+    const defaultProject = [
+        { 报读项目类别:'单笔试', 项目1:'《管理类联考笔试》VIP定制直通班（活动特供班）2025', 项目2:'《管理类联考笔试》VIP无忧班（2026）', 项目3:'《管理类联考笔试》VIP菁英班2025' },
+        { 报读项目类别:'笔试+复试', 项目1:'《管理类联考笔试+复试》VIP名校协议班2026', 项目2:'', 项目3:'' },
+        { 报读项目类别:'笔面联报', 项目1:'《管理类联考笔面联报》VIP定制无忧班2026', 项目2:'', 项目3:'' },
+        { 报读项目类别:'双考期', 项目1:'《管理类联考笔试》VIP定制直通班（全国）2025+2026', 项目2:'', 项目3:'' }
+    ];
+    const defaultPhrase = [
+        { 序号:1, 快捷标签:'自定义', 记单内容:'@自定义内容' },
+        { 序号:2, 快捷标签:'提醒开学典礼', 记单内容:'@微信左下角【消息】栏弹出的邀请通知……@课程学习都是在微信公众号和网页上面进行……@开学典礼安排在6月27号……@工作时间上午10-晚上7点' }
+    ];
+    const defaultStudents = [
+        { 归属主体:'茶米教育',考期:'2025',班级:5,'是否添加微信':'是','是否发送新生资料':'是','是否发送摸底考试':'是',归属合作方:'成研事业部',跟进人:'盘小零',归属班主任:'小小老师',记单时间:'2025-03-20 00:00:00',报名时间:'',学员报名手机号:'13802123304',其他手机号:'',学员姓名:'沈花花',身份证号:'440223112345013716',APP账号:'67461733',APP密码:'AKaQ33',职业:'基层公务员',订单金额:'10000',项目:'笔试+复试',所报班型:'《管理类联考笔试+复试》VIP保障协议班2026',意向院校１:'中山大学',意向院校2:'',意向院校3:'',意向专业:'MPA',最高学历:'本科',毕业年份:'2016',其他学历:'大专',其他学历获取时间:'2010',户籍所在地:'广州',购买社保所在省份:'广东',购买社保城市:'广州',购买社保时长:'10年以上',意向学习城市:'广州',邮箱:'23457144@qq.com',微信号:'shh.520',记单信息:'【开班已完成】 @微信 @项目：单笔 @班型：VIP...',备注:'', '是否售后学员':'' },
+        { 归属主体:'茶米教育',考期:'2025',班级:3,'是否添加微信':'是','是否发送新生资料':'否','是否发送摸底考试':'是',归属合作方:'网销部',跟进人:'李雷',归属班主任:'李老师',记单时间:'2025-03-21 10:30:00',报名时间:'2025-03-21',学员报名手机号:'13987654321',其他手机号:'',学员姓名:'韩梅梅',身份证号:'4402231987654321',APP账号:'hm123',APP密码:'pass123',职业:'企业职员',订单金额:'8000',项目:'单笔试',所报班型:'《管理类联考笔试》VIP无忧班（2026）',意向院校１:'暨南大学',意向院校2:'',意向院校3:'',意向专业:'MBA',最高学历:'本科',毕业年份:'2018',其他学历:'',其他学历获取时间:'',户籍所在地:'深圳',购买社保所在省份:'广东',购买社保城市:'深圳',购买社保时长:'5年',意向学习城市:'深圳',邮箱:'meimei@qq.com',微信号:'hm123',记单信息:'【开班未完成】 @微信开班 @单笔试...',备注:'', '是否售后学员':'' }
+    ];
+    const defaultMajorData = [
+        { 专业代码:'125100', 专业名称:'工商管理', 专业简称:'MBA', '2025年国家线（A区）':'151/35/70' },
+        { 专业代码:'125200', 专业名称:'公共管理', 专业简称:'MPA', '2025年国家线（A区）':'164/38/76' },
+        { 专业代码:'125300', 专业名称:'会计', 专业简称:'MPAcc', '2025年国家线（A区）':'194/48/96' },
+        { 专业代码:'125400', 专业名称:'旅游管理', 专业简称:'MTA', '2025年国家线（A区）':'151/35/70' },
+        { 专业代码:'125500', 专业名称:'图书情报', 专业简称:'MLIS', '2025年国家线（A区）':'191/48/96' },
+        { 专业代码:'125700', 专业名称:'审计', 专业简称:'MAud', '2025年国家线（A区）':'201/52/104' },
+        { 专业代码:'125600', 专业名称:'工程管理', 专业简称:'MEM', '2025年国家线（A区）':'162/38/67' }
+    ];
+    const defaultClasses = [
+        { 考期:'2025', 班级:1, 计划招生人数:30, '是否停招新生':'否' },
+        { 考期:'2025', 班级:2, 计划招生人数:25, '是否停招新生':'否' },
+        { 考期:'2025', 班级:3, 计划招生人数:20, '是否停招新生':'是' }
+    ];
+
+    // 初始化数据库（仅当本地为空时填充默认数据）
+    async function initDB() {
+        // 员工表
+        const empRes = await dbEmployees.allDocs({ limit: 1 });
+        if (empRes.rows.length === 0) {
+            for (let i=0; i<defaultEmployees.length; i++) {
+                let emp = { ...defaultEmployees[i], _id: 'emp_'+Date.now()+'_'+i, _ctime: Date.now()-i*1000 };
+                await dbEmployees.put(emp).catch(e=>console.warn('员工表初始化失败',e));
+            }
+        }
+        // 项目表
+        const projRes = await dbProject.allDocs({ limit: 1 });
+        if (projRes.rows.length===0) {
+            for (let i=0; i<defaultProject.length; i++) {
+                let doc = { ...defaultProject[i], _id:'proj_'+Date.now()+'_'+i, _ctime: Date.now()-i*1000 };
+                await dbProject.put(doc);
+            }
+        }
+        // 话术表
+        const phRes = await dbPhrase.allDocs({ limit: 1 });
+        if (phRes.rows.length===0) {
+            for (let i=0; i<defaultPhrase.length; i++) {
+                let doc = { ...defaultPhrase[i], _id:'ph_'+Date.now()+'_'+i, _ctime: Date.now()-i*1000 };
+                await dbPhrase.put(doc);
+            }
+        }
+        // 学员表
+        const stuRes = await dbStudents.allDocs({ limit: 1 });
+        if (stuRes.rows.length===0) {
+            for (let i=0; i<defaultStudents.length; i++) {
+                let doc = { ...defaultStudents[i], _id:'stu_'+Date.now()+'_'+i, _ctime: Date.now()-i*100000 };
+                await dbStudents.put(doc);
+            }
+        }
+        // 发票表简单初始
+        const invRes = await dbInvoices.allDocs({ limit: 1 });
+        if (invRes.rows.length===0) {
+            await dbInvoices.put({ _id:'inv_sample_'+Date.now(), 归属主体:'茶米教育',班主任:'小小老师',姓名:'沈花花',联系电话:'13802123304',身份证号:'440223112345013716',报考班型:'《管理类联考笔试+复试》VIP保障协议班2026',招生部门:'成研事业部','*发票类型':'增值税普通发票（电子）','*开票金额':'10000','*发票抬头':'沈花花','*纳税人识别号':'440223112345013716',是否需要开具发票:'是',申请人:'小小老师',申请时间:'2025-03-20 00:00:00',备注:'加急',开票人:'大财老师', _ctime: Date.now() - 90000 }).catch(e=>console.warn);
+        }
+        // 邮寄表
+        const mailRes = await dbMailings.allDocs({ limit: 1 });
+        if (mailRes.rows.length===0) {
+            await dbMailings.put({ _id:'mail_sample_'+Date.now(), 时间:'2025-03-20 00:00:00',归属主体:'茶米教育',班主任:'小小老师',邮寄物品:'纸质资料 大礼包',学员姓名:'沈花花',收件人:'小沈',收件人号码:'13802123304',收件人地址:'四川省通江县某某大街',是否需要邮寄:'是',特殊备注:'要求邮政快递', _ctime: Date.now() - 80000 }).catch(e=>console.warn);
+        }
+        // 专业代码表
+        const majRes = await dbMajor.allDocs({ limit: 1 });
+        if (majRes.rows.length===0) {
+            for (let i=0; i<defaultMajorData.length; i++) {
+                let doc = { ...defaultMajorData[i], _id:'maj_'+Date.now()+'_'+i, _ctime: Date.now()-i*1000 };
+                await dbMajor.put(doc);
+            }
+        }
+        // 班级表
+        const clsRes = await dbClasses.allDocs({ limit: 1 });
+        if (clsRes.rows.length===0) {
+            for (let i=0; i<defaultClasses.length; i++) {
+                let doc = { ...defaultClasses[i], _id:'class_'+Date.now()+'_'+i, _ctime: Date.now()-i*1000 };
+                await dbClasses.put(doc);
+            }
+        }
+    }
+    initDB();
+
+    // ---------- 登录状态管理 ----------
+    const ADMIN_ACCOUNT = '管理员';
+    const ADMIN_PASSWORD = '2026';
+    let currentUser = JSON.parse(sessionStorage.getItem('currentUser')) || null;
+    const userDisplay = document.getElementById('userDisplay2');
+    const currentUserName = document.getElementById('currentUserName2');
+    const showLoginBtn = document.getElementById('showLoginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loginModal = document.getElementById('loginModal');
+
+    function updateLoginUI() {
+        if (currentUser) {
+            userDisplay.classList.remove('hidden');
+            currentUserName.innerText = currentUser.账号 || '';
+            showLoginBtn.classList.add('hidden');
+            logoutBtn.classList.remove('hidden');
+        } else {
+            userDisplay.classList.add('hidden');
+            showLoginBtn.classList.remove('hidden');
+            logoutBtn.classList.add('hidden');
+        }
+    }
+    updateLoginUI();
+
+    function requireLogin() {
+        if (!currentUser) {
+            alert('请先登录');
+            loginModal.classList.remove('hidden');
+            return false;
+        }
+        return true;
+    }
+
+    document.getElementById('showLoginBtn').addEventListener('click', ()=>loginModal.classList.remove('hidden'));
+    document.getElementById('closeLoginModal').addEventListener('click', ()=>loginModal.classList.add('hidden'));
+    document.getElementById('loginBtn').addEventListener('click', ()=>{
+        const acc = document.getElementById('loginUser').value;
+        const pwd = document.getElementById('loginPass').value;
+
+        // 管理员硬编码
+        if (acc === ADMIN_ACCOUNT && pwd === ADMIN_PASSWORD) {
+            currentUser = { 账号: ADMIN_ACCOUNT, 是否启用该账号: '是' };
+            sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+            updateLoginUI();
+            loginModal.classList.add('hidden');
+            renderTable(currentTab, document.getElementById('searchInput').value, 1);
+            return;
+        }
+
+        // 普通员工验证
+        dbEmployees.allDocs({ include_docs: true }).then(res => {
+            const users = res.rows.map(r=>r.doc);
+            const found = users.find(u=>u.账号===acc && u.密码===pwd && u.是否启用该账号==='是');
+            if (found) {
+                currentUser = found;
+                sessionStorage.setItem('currentUser', JSON.stringify(found));
+                updateLoginUI();
+                loginModal.classList.add('hidden');
+                renderTable(currentTab, document.getElementById('searchInput').value, 1);
+            } else { alert('登录失败：账号/密码错误或账号未启用'); }
+        });
+    });
+    document.getElementById('logoutBtn').addEventListener('click', ()=>{
+        currentUser = null;
+        sessionStorage.removeItem('currentUser');
+        updateLoginUI();
+        renderTable(currentTab, document.getElementById('searchInput').value, 1);
+    });
+
+    // ---------- 以下为原有表格渲染逻辑，保持不变 ----------
+    function escapeHtml(unsafe) {
+        if (unsafe===null||unsafe===undefined) return '';
+        return String(unsafe).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+    function shouldUseTextarea(fieldName) {
+        return ['记单','备注','地址','沟通记录','记单信息','特殊备注'].some(k => fieldName.includes(k));
+    }
+
+    // 数据库映射
+    const dbMap = {
+        students: { db: dbStudents, headers: studentHeaders, container: 'studentTableContainer', countSpan: 'studentCount', idPrefix: 'stu', paginationId: 'studentPagination' },
+        invoices: { db: dbInvoices, headers: invoiceHeaders, container: 'invoiceTableContainer', countSpan: 'invoiceCount', idPrefix: 'inv', paginationId: 'invoicePagination' },
+        mailings: { db: dbMailings, headers: mailHeaders, container: 'mailTableContainer', countSpan: 'mailCount', idPrefix: 'mail', paginationId: 'mailPagination' },
+        after_sales: { db: dbAfterSales, headers: afterSalesHeaders, container: 'afterSalesTableContainer', countSpan: 'afterSalesCount', idPrefix: 'as', paginationId: 'afterSalesPagination' },
+        project_category: { db: dbProject, headers: projectHeaders, container: 'projectTableContainer', countSpan: 'projectCount', idPrefix: 'proj', paginationId: 'projectPagination' },
+        major_codes: { db: dbMajor, headers: majorHeaders, container: 'majorTableContainer', countSpan: 'majorCount', idPrefix: 'maj', paginationId: 'majorPagination' },
+        classes: { db: dbClasses, headers: classHeaders, container: 'classTableContainer', countSpan: 'classCount', idPrefix: 'class', paginationId: 'classPagination' },
+        memo_phrase: { db: dbPhrase, headers: phraseHeaders, container: 'phraseTableContainer', countSpan: 'phraseCount', idPrefix: 'ph', paginationId: 'phrasePagination' }
+    };
+
+    let currentTab = 'student';
+    const PAGE_SIZE = 15;
+    const pageStates = {
+        students:1, invoices:1, mailings:1, after_sales:1, project_category:1, major_codes:1, classes:1, memo_phrase:1
+    };
+
+    // 辅助：班级统计
+    async function getClassStats() {
+        const all = await dbStudents.allDocs({ include_docs: true });
+        const students = all.rows.map(r=>r.doc).filter(d=>!d._id.startsWith('_design'));
+        const stats = {};
+        students.forEach(s => {
+            const key = `${s.考期}_${s.班级}`;
+            if (!stats[key]) stats[key] = new Set();
+            stats[key].add(s._id);
+        });
+        return stats;
+    }
+
+    // 渲染表格（核心）
+    async function renderTable(dbKey, filterText='', page=1) {
+        if (!requireLogin()) return;
+        const conf = dbMap[dbKey];
+        if (!conf) return;
+        const { db, headers, container, countSpan, paginationId } = conf;
+        const allDocs = await db.allDocs({ include_docs: true });
+        let rows = allDocs.rows.map(r=>r.doc).filter(d=>!d._id.startsWith('_design'));
+        rows.sort((a,b)=>(b._ctime||0)-(a._ctime||0));
+        if (filterText) {
+            const lower = filterText.toLowerCase();
+            rows = rows.filter(d=>Object.values(d).some(v=>v && v.toString().toLowerCase().includes(lower)));
+        }
+        document.getElementById(countSpan).innerText = rows.length;
+        const totalPages = Math.ceil(rows.length/PAGE_SIZE)||1;
+        let currentPage = Math.min(page, totalPages);
+        if (currentPage<1) currentPage=1;
+        pageStates[dbKey]=currentPage;
+        const start = (currentPage-1)*PAGE_SIZE;
+        const pageRows = rows.slice(start, start+PAGE_SIZE);
+
+        let classStats = {};
+        if (dbKey==='classes') classStats = await getClassStats();
+
+        let html = `<table><thead><tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}<th style="position:sticky;right:0;background:#edf2f7;">操作</th></tr></thead><tbody>`;
+        for (const doc of pageRows) {
+            const rowId = doc._id;
+            html += `<tr data-id="${escapeHtml(rowId)}" data-db="${escapeHtml(dbKey)}" class="cursor-pointer hover:bg-gray-100">`;
+            for (const header of headers) {
+                let val = doc[header]!==undefined ? doc[header] : '';
+                if (typeof val==='object') val=JSON.stringify(val);
+                // 班级表动态列
+                if (dbKey==='classes' && header==='实际报名人数') {
+                    const key = `${doc.考期}_${doc.班级}`;
+                    val = classStats[key] ? classStats[key].size : 0;
+                    doc[header]=val;
+                }
+                if (dbKey==='classes' && header==='是否满员') {
+                    const plan = parseInt(doc.计划招生人数)||0;
+                    const key = `${doc.考期}_${doc.班级}`;
+                    const actual = classStats[key] ? classStats[key].size : 0;
+                    val = (plan>0 && actual>=plan) ? '是' : '否';
+                }
+                // 是否列下拉
+                if (header.includes('是否') && header!=='是否满员') {
+                    const selectedYes = val==='是' ? 'selected' : '';
+                    const selectedNo = val==='否' ? 'selected' : '';
+                    const bgClass = val==='是' ? 'is-select-yes' : (val==='否' ? 'is-select-no' : '');
+                    html += `<td class="p-0" data-field="${escapeHtml(header)}"><select class="is-select ${bgClass}" data-field="${escapeHtml(header)}" data-row-id="${escapeHtml(rowId)}" data-db="${escapeHtml(dbKey)}"><option value="" ${!val?'selected':''}>--</option><option value="是" ${selectedYes}>是</option><option value="否" ${selectedNo}>否</option></select></td>`;
+                } else {
+                    const displayVal = val.length>20 ? val.substring(0,20)+'…' : val;
+                    html += `<td class="editable-cell" data-field="${escapeHtml(header)}" title="${escapeHtml(val)}">${escapeHtml(displayVal)}</td>`;
+                }
+            }
+            html += `<td style="position:sticky;right:0;background:white;"><button class="delete-row-btn text-red-600 hover:text-red-800" title="删除"><i class="fas fa-trash"></i></button></td></tr>`;
+        }
+        html += '</tbody></table>';
+        document.getElementById(container).innerHTML = html;
+
+        // 绑定行点击
+        document.querySelectorAll(`#${container} tbody tr[data-id]`).forEach(tr=>{
+            tr.addEventListener('click', e=>{
+                if (e.target.tagName==='SELECT' || e.target.closest('button')) return;
+                showEditModal(tr.dataset.id, tr.dataset.db);
+            });
+        });
+        // 删除按钮
+        document.querySelectorAll(`#${container} .delete-row-btn`).forEach(btn=>{
+            btn.addEventListener('click', async e=>{
+                e.stopPropagation();
+                if (!confirm('确定删除？')) return;
+                const row = e.target.closest('tr');
+                const id = row?.dataset.id;
+                const dbKey = row?.dataset.db;
+                if (!id||!dbKey) return;
+                const targetDb = dbMap[dbKey]?.db;
+                if (targetDb) {
+                    try {
+                        const doc = await targetDb.get(id);
+                        await targetDb.remove(doc);
+                        if (dbKey==='students' && currentTab==='classes') renderTable('classes', filterText, pageStates.classes);
+                        renderTable(currentTab, filterText, pageStates[currentTab]);
+                    } catch { alert('删除失败'); }
+                }
+            });
+        });
+        // 是否列变更
+        document.querySelectorAll(`#${container} select.is-select`).forEach(select=>{
+            select.addEventListener('change', async e=>{
+                e.stopPropagation();
+                const newVal = e.target.value;
+                const field = e.target.dataset.field;
+                const rowId = e.target.dataset.rowId;
+                const dbKey = e.target.dataset.db;
+                if (!rowId||!dbKey||!field) return;
+                const targetDb = dbMap[dbKey]?.db;
+                if (!targetDb) return;
+                try {
+                    const doc = await targetDb.get(rowId);
+                    doc[field] = newVal;
+                    doc._ctime = Date.now();
+                    await targetDb.put(doc);
+                    if (dbKey==='students' && field==='是否售后学员') await syncAfterSalesFromStudent(doc);
+                    e.target.className = `is-select ${newVal==='是'?'is-select-yes':(newVal==='否'?'is-select-no':'')}`;
+                } catch { alert('更新失败'); }
+            });
+        });
+
+        // 分页
+        renderPagination(paginationId, currentPage, totalPages, dbKey, filterText);
+    }
+
+    // 同步售后（简化）
+    async function syncAfterSalesFromStudent(studentDoc) {
+        if (studentDoc['是否售后学员']!=='是') return;
+        const all = await dbAfterSales.allDocs({ include_docs: true });
+        const existing = all.rows.map(r=>r.doc).find(d=>d.姓名===studentDoc.学员姓名 && d.手机号===studentDoc.学员报名手机号);
+        const base = { 归属班主任:studentDoc.归属班主任||'', 姓名:studentDoc.学员姓名||'', 手机号:studentDoc.学员报名手机号||'', 班型:studentDoc.所报班型||'', 身份证号:studentDoc.身份证号||'', 报名时间:studentDoc.报名时间||'' };
+        if (existing) {
+            Object.assign(existing, base);
+            existing._ctime = Date.now();
+            await dbAfterSales.put(existing);
+        } else {
+            const newDoc = { ...base, _id:'as_'+Date.now()+'_'+Math.random().toString(36).substr(2,6), _ctime:Date.now() };
+            await dbAfterSales.put(newDoc);
+        }
+        if (currentTab==='afterSales') renderTable('after_sales', document.getElementById('searchInput').value, pageStates.after_sales);
+    }
+
+    // 分页渲染
+    function renderPagination(paginationId, cp, tp, dbKey, filter) {
+        const p = document.getElementById(paginationId);
+        if (!p) return;
+        if (tp<=1) { p.innerHTML=''; return; }
+        let html = `<button class="page-first" ${cp===1?'disabled':''}><i class="fas fa-angle-double-left"></i></button>
+            <button class="page-prev" ${cp===1?'disabled':''}><i class="fas fa-angle-left"></i></button>
+            <span>第 <input type="number" id="pageInput_${dbKey}" value="${cp}" min="1" max="${tp}" style="width:50px;"> 页 / 共 ${tp} 页</span>
+            <button class="page-next" ${cp===tp?'disabled':''}><i class="fas fa-angle-right"></i></button>
+            <button class="page-last" ${cp===tp?'disabled':''}><i class="fas fa-angle-double-right"></i></button>`;
+        p.innerHTML = html;
+        p.querySelector('.page-first')?.addEventListener('click', ()=> renderTable(dbKey, filter, 1));
+        p.querySelector('.page-prev')?.addEventListener('click', ()=> renderTable(dbKey, filter, cp-1));
+        p.querySelector('.page-next')?.addEventListener('click', ()=> renderTable(dbKey, filter, cp+1));
+        p.querySelector('.page-last')?.addEventListener('click', ()=> renderTable(dbKey, filter, tp));
+        const inp = document.getElementById(`pageInput_${dbKey}`);
+        inp?.addEventListener('change', function() { let np = parseInt(this.value); if (np<1) np=1; if (np>tp) np=tp; renderTable(dbKey, filter, np); });
+    }
+
+    // 新增空白行
+    async function addEmptyRow(dbKey) {
+        if (!requireLogin()) return;
+        const conf = dbMap[dbKey];
+        if (!conf) return;
+        const { db, headers, idPrefix } = conf;
+        const newDoc = { _id: idPrefix+'_'+Date.now()+'_'+Math.random().toString(36).substr(2,4), _ctime: Date.now() };
+        headers.forEach(h=> newDoc[h]='');
+        if (headers.includes('归属班主任')) newDoc['归属班主任'] = currentUser?.账号||'';
+        if (headers.includes('班主任')) newDoc['班主任'] = currentUser?.账号||'';
+        if (headers.includes('归属主体')) newDoc['归属主体'] = '茶米教育';
+        if (dbKey==='classes') { newDoc['考期']='2025'; newDoc['班级']='1'; newDoc['计划招生人数']='30'; newDoc['是否停招新生']='否'; }
+        await db.put(newDoc);
+        renderTable(currentTab, document.getElementById('searchInput').value, 1);
+    }
+
+    // 编辑弹窗
+    let currentEditId=null, currentEditDbKey=null, currentEditDoc=null;
+    async function showEditModal(rowId, dbKey) {
+        const conf = dbMap[dbKey];
+        if (!conf) return;
+        try {
+            const doc = await conf.db.get(rowId);
+            currentEditId=rowId; currentEditDbKey=dbKey; currentEditDoc=doc;
+            const headers = conf.headers;
+            let fieldsHtml = '';
+            for (let header of headers) {
+                let val = doc[header]!==undefined? doc[header]:'';
+                if (typeof val==='object') val=JSON.stringify(val);
+                const escapedVal = escapeHtml(val);
+                if (shouldUseTextarea(header)) {
+                    fieldsHtml += `<div><label class="block font-medium">${escapeHtml(header)}</label><textarea class="w-full border p-1 rounded text-sm modal-field" data-field="${escapeHtml(header)}" rows="3">${escapedVal}</textarea></div>`;
+                } else if (header.includes('是否')) {
+                    const selYes = val==='是'?'selected':'';
+                    const selNo = val==='否'?'selected':'';
+                    fieldsHtml += `<div><label class="block font-medium">${escapeHtml(header)}</label><select class="w-full border p-1 rounded text-sm modal-field" data-field="${escapeHtml(header)}"><option value="" ${!val?'selected':''}>--</option><option value="是" ${selYes}>是</option><option value="否" ${selNo}>否</option></select></div>`;
+                } else {
+                    fieldsHtml += `<div><label class="block font-medium">${escapeHtml(header)}</label><input type="text" class="w-full border p-1 rounded text-sm modal-field" data-field="${escapeHtml(header)}" value="${escapedVal}"></div>`;
+                }
+            }
+            document.getElementById('modalFields').innerHTML = fieldsHtml;
+            document.getElementById('modalTitle').innerText = `编辑 - ${doc.学员姓名||doc.姓名||doc.快捷标签||doc.专业名称||'数据行'}`;
+            document.getElementById('editModal').classList.remove('hidden');
+        } catch { alert('无法加载数据'); }
+    }
+
+    async function saveModalEdit() {
+        if (!currentEditId||!currentEditDbKey||!currentEditDoc) return;
+        const conf = dbMap[currentEditDbKey];
+        if (!conf) return;
+        document.querySelectorAll('#modalFields .modal-field').forEach(inp => {
+            const f = inp.dataset.field;
+            if (f) currentEditDoc[f] = inp.value;
+        });
+        currentEditDoc._ctime = Date.now();
+        try {
+            await conf.db.put(currentEditDoc);
+            if (currentEditDbKey==='students') await syncAfterSalesFromStudent(currentEditDoc);
+            if (currentTab==='classes') renderTable('classes', document.getElementById('searchInput').value, pageStates.classes);
+            alert('保存成功');
+            closeModal();
+            renderTable(currentTab, document.getElementById('searchInput').value, pageStates[currentTab]);
+        } catch { alert('保存失败'); }
+    }
+    function closeModal() { document.getElementById('editModal').classList.add('hidden'); currentEditId=null; }
+
+    // 导出全部表格
+    async function exportAllTables() {
+        if (!requireLogin()) return;
+        const wb = XLSX.utils.book_new();
+        for (const [key, conf] of Object.entries(dbMap)) {
+            const all = await conf.db.allDocs({ include_docs: true });
+            let rows = all.rows.map(r=>r.doc).filter(d=>!d._id.startsWith('_design'));
+            const headers = conf.headers;
+            if (key==='classes') {
+                const stats = await getClassStats();
+                rows = rows.map(doc=>{
+                    const k = `${doc.考期}_${doc.班级}`;
+                    const actual = stats[k]?stats[k].size:0;
+                    const plan = parseInt(doc.计划招生人数)||0;
+                    return {...doc, 实际报名人数:actual, 是否满员:(plan>0&&actual>=plan)?'是':'否'};
+                });
+            }
+            const data = rows.map(d=> headers.map(h=> d[h]!==undefined? d[h]:''));
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+            let name = key;
+            if (key==='students') name='学员大表';
+            else if (key==='invoices') name='发票表';
+            else if (key==='mailings') name='邮寄表';
+            else if (key==='after_sales') name='售后表';
+            else if (key==='project_category') name='项目类别';
+            else if (key==='major_codes') name='专业代码';
+            else if (key==='classes') name='班级表';
+            else if (key==='memo_phrase') name='记单话术';
+            XLSX.utils.book_append_sheet(wb, ws, name);
+        }
+        XLSX.writeFile(wb, `全部表格_${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+
+    // 选项卡切换
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('text-blue-600', 'border-b-2', 'border-blue-500'));
+            btn.classList.add('text-blue-600', 'border-b-2', 'border-blue-500');
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+            const tab = btn.dataset.tab;
+            currentTab = tab;
+            let dbKey = 'students';
+            if (tab==='invoice') dbKey='invoices';
+            else if (tab==='mail') dbKey='mailings';
+            else if (tab==='afterSales') dbKey='after_sales';
+            else if (tab==='project') dbKey='project_category';
+            else if (tab==='major') dbKey='major_codes';
+            else if (tab==='class') dbKey='classes';
+            else if (tab==='phrase') dbKey='memo_phrase';
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+            renderTable(dbKey, document.getElementById('searchInput').value, pageStates[dbKey]||1);
+        });
+    });
+
+    // 搜索
+    document.getElementById('searchInput').addEventListener('input', e => {
+        const val = e.target.value;
+        let dbKey = 'students';
+        if (currentTab==='invoice') dbKey='invoices';
+        else if (currentTab==='mail') dbKey='mailings';
+        else if (currentTab==='afterSales') dbKey='after_sales';
+        else if (currentTab==='project') dbKey='project_category';
+        else if (currentTab==='major') dbKey='major_codes';
+        else if (currentTab==='class') dbKey='classes';
+        else if (currentTab==='phrase') dbKey='memo_phrase';
+        renderTable(dbKey, val, 1);
+    });
+
+    // 新增行按钮
+    document.querySelectorAll('.add-row-btn').forEach(btn => {
+        btn.addEventListener('click', e => addEmptyRow(btn.dataset.db));
+    });
+
+    // 全屏
+    const container = document.querySelector('.max-w-7xl.mx-auto.bg-white.p-4.rounded.shadow');
+    document.getElementById('fullscreenBtn').addEventListener('click', ()=>{
+        if (!document.fullscreenElement) container.requestFullscreen().catch(()=>alert('全屏失败'));
+        else document.exitFullscreen();
+    });
+
+    // 导出当前视图
+    document.getElementById('exportFilteredBtn').addEventListener('click', async ()=>{
+        if (!requireLogin()) return;
+        const dbKey = currentTab==='student'?'students': currentTab==='invoice'?'invoices': currentTab==='mail'?'mailings': currentTab==='afterSales'?'after_sales': currentTab==='project'?'project_category': currentTab==='major'?'major_codes': currentTab==='class'?'classes': currentTab==='phrase'?'memo_phrase':'';
+        const conf = dbMap[dbKey];
+        if (!conf) return;
+        const all = await conf.db.allDocs({ include_docs: true });
+        let rows = all.rows.map(r=>r.doc).filter(d=>!d._id.startsWith('_design'));
+        const filter = document.getElementById('searchInput').value.toLowerCase();
+        if (filter) rows = rows.filter(d=>Object.values(d).some(v=>v&&v.toString().toLowerCase().includes(filter)));
+        if (dbKey==='classes') {
+            const stats = await getClassStats();
+            rows = rows.map(doc=>{
+                const k = `${doc.考期}_${doc.班级}`;
+                const actual = stats[k]?stats[k].size:0;
+                const plan = parseInt(doc.计划招生人数)||0;
+                return {...doc, 实际报名人数:actual, 是否满员:(plan>0&&actual>=plan)?'是':'否'};
+            });
+        }
+        const headers = conf.headers;
+        const data = rows.map(d=> headers.map(h=> d[h]!==undefined? d[h]:''));
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, currentTab);
+        XLSX.writeFile(wb, `运营登记表_${currentTab}_filtered.xlsx`);
+    });
+
+    document.getElementById('exportAllBtn').addEventListener('click', exportAllTables);
+    document.getElementById('importBtn').addEventListener('click', ()=>{
+        alert('导入功能可通过解析Excel更新数据库，具体实现可自行扩展。\n\n所有数据存储在IndexedDB，可使用导出备份。');
+    });
+    document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+    document.getElementById('saveModalBtn').addEventListener('click', saveModalEdit);
+
+    // 初始渲染
+    renderTable('students', '', 1);
+})();
+</script>
+<!-- 数据存储说明：所有表格数据保存在浏览器本地IndexedDB，并与远程CouchDB实时同步。请定期导出备份。 -->
+</body>
+</html>

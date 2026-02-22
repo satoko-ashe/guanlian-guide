@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理权限 · 员工管理 & 智能排班（增强版）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <style>
+        /* 原有样式保持不变 */
+        .table-scroll {
+            overflow-x: auto;
+            overflow-y: hidden;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.375rem;
+            margin-bottom: 0.5rem;
+        }
+        .table-scroll table {
+            border-collapse: collapse;
+            width: max-content;
+            min-width: 100%;
+        }
+        .table-scroll thead {
+            position: sticky;
+            top: 0;
+            background: #f7fafc;
+            z-index: 10;
+            box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+        }
+        .table-scroll th, .table-scroll td {
+            border: 1px solid #cbd5e0;
+            padding: 0.5rem;
+            font-size: 0.75rem;
+            white-space: nowrap;
+        }
+        .table-scroll th {
+            text-align: center;
+            font-weight: 600;
+            background-color: #edf2f7;
+        }
+        .table-scroll td {
+            text-align: left;
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            height: 35px;
+            line-height: 35px;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        .schedule-cell {
+            padding: 0 !important;
+        }
+        .schedule-select {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+            font-size: 0.7rem;
+            padding: 0 4px;
+            cursor: pointer;
+            border-radius: 0;
+        }
+        .schedule-select option {
+            background: white;
+            color: black;
+        }
+        .schedule-select.rest {
+            background-color: #fee2e2;
+            color: #b91c1c;
+            font-weight: 500;
+        }
+        .schedule-select.off {
+            background-color: #ffedd5;
+            color: #9a3412;
+            font-weight: 500;
+        }
+        .schedule-select.a {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+        .schedule-select.b {
+            background-color: #cffafe;
+            color: #0e7490;
+        }
+        .schedule-select.c {
+            background-color: #e0e7ff;
+            color: #3730a3;
+        }
+        .schedule-select.d {
+            background-color: #f3e8ff;
+            color: #6b21a8;
+        }
+        .warning-pink {
+            background-color: #fce4e4 !important;
+        }
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+        .modal-content {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            width: 90%;
+            max-width: 900px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .pagination {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            justify-content: flex-end;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+        }
+        .pagination button {
+            padding: 0.2rem 0.8rem;
+            border: 1px solid #ccc;
+            background: white;
+            border-radius: 0.25rem;
+            cursor: pointer;
+        }
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .pagination input {
+            width: 50px;
+            text-align: center;
+            border: 1px solid #ccc;
+            border-radius: 0.25rem;
+        }
+        .rule-panel {
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s;
+        }
+        .rule-panel.collapsed {
+            display: none;
+        }
+        .stat-item {
+            display: inline-block;
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 9999px;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.7rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .arrow-icon {
+            cursor: pointer;
+            margin-left: 0.5rem;
+            transition: transform 0.2s;
+        }
+        .arrow-icon.rotated {
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans p-4">
+
+<!-- 右上角导航 (与运营大表保持一致) -->
+<div class="max-w-7xl mx-auto mb-2 flex justify-end space-x-3 text-sm">
+    <a href="autoNote.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-pen-fancy mr-1"></i>自动记单</a>
+    <a href="masterTable.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-table mr-1"></i>运营登记大表</a>
+    <a href="admin.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-lock mr-1"></i>管理权限</a>
+</div>
+
+<!-- 登录状态条 + 功能栏 (合并，类似运营大表) -->
+<div class="max-w-7xl mx-auto mb-4 flex flex-wrap items-center justify-between gap-2 bg-white p-2 rounded shadow">
+    <div class="flex items-center space-x-2 text-sm">
+        <span class="text-gray-600"><i class="fas fa-database mr-1 text-blue-500"></i>本地PouchDB · 员工排班系统 (与CouchDB实时同步)</span>
+        <span id="userDisplay" class="hidden ml-2">👤 <span id="currentUserName"></span></span>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+        <button id="fullscreenBtn" class="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-sm"><i class="fas fa-expand mr-1"></i>全屏</button>
+        <button id="exportCurrentBtn" class="bg-green-100 hover:bg-green-200 px-2 py-1 rounded text-sm"><i class="fas fa-download mr-1"></i>导出当前视图</button>
+        <button id="exportAllBtn" class="bg-purple-100 hover:bg-purple-200 px-2 py-1 rounded text-sm"><i class="fas fa-file-excel mr-1"></i>导出全部</button>
+        <button id="importBtn" class="bg-blue-100 hover:bg-blue-200 px-2 py-1 rounded text-sm"><i class="fas fa-upload mr-1"></i>导入</button>
+        <button id="showLoginBtn" class="bg-blue-500 text-white px-3 py-1 rounded text-sm"><i class="fas fa-sign-in-alt mr-1"></i>登录</button>
+        <button id="logoutBtn" class="bg-gray-300 px-3 py-1 rounded text-sm hidden">退出</button>
+    </div>
+</div>
+
+<!-- 主内容：选项卡 -->
+<div class="max-w-7xl mx-auto bg-white p-4 rounded shadow">
+    <div class="flex flex-wrap border-b text-sm gap-1">
+        <button class="tab-btn px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-500" data-tab="employee">👥 员工管理表</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="schedule">📅 员工排班表</button>
+    </div>
+
+    <!-- 员工表 -->
+    <div id="tab-employee" class="tab-content block mt-2">
+        <div class="flex justify-between mb-1">
+            <span class="text-xs text-gray-500">共 <span id="employeeCount">0</span> 行</span>
+            <button id="addEmployeeBtn" class="bg-indigo-50 text-indigo-700 px-3 py-0.5 rounded text-xs"><i class="fas fa-plus mr-1"></i>新增员工</button>
+        </div>
+        <div id="employeeTableContainer" class="table-scroll"></div>
+    </div>
+
+    <!-- 排班表 -->
+    <div id="tab-schedule" class="tab-content hidden mt-2">
+        <!-- 月份选择 & 操作栏 -->
+        <div class="flex flex-wrap items-center gap-4 mb-3">
+            <div class="flex items-center gap-2">
+                <label class="text-sm font-medium">选择月份：</label>
+                <input type="month" id="monthPicker" class="border rounded px-2 py-1 text-sm" value="">
+            </div>
+            <button id="saveScheduleBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"><i class="fas fa-save mr-1"></i>保存本月排班</button>
+            <button id="refreshScheduleBtn" class="bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded text-sm"><i class="fas fa-sync-alt mr-1"></i>刷新</button>
+            <span id="scheduleMode" class="text-xs bg-gray-100 px-2 py-1 rounded flex items-center">
+                <span id="modeText"></span>
+                <i class="fas fa-chevron-right arrow-icon ml-1" id="toggleRulePanel" title="展开/收起规则"></i>
+            </span>
+        </div>
+
+        <!-- 规则配置面板（可折叠） -->
+        <div id="rulePanel" class="rule-panel">
+            <div class="flex items-center justify-between mb-2">
+                <span class="font-semibold text-sm"><i class="fas fa-sliders-h mr-1"></i>排班规则配置（本月）</span>
+                <button id="saveRulesBtn" class="bg-green-600 hover:bg-green-700 text-white px-3 py-0.5 rounded text-xs">保存规则</button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                <!-- 特殊规则 -->
+                <div>
+                    <label class="block font-medium">全体固定休息日星期</label>
+                    <div class="flex gap-2 flex-wrap">
+                        <label><input type="checkbox" class="fixed-weekday" value="0"> 周日</label>
+                        <label><input type="checkbox" class="fixed-weekday" value="1"> 周一</label>
+                        <label><input type="checkbox" class="fixed-weekday" value="2"> 周二</label>
+                        <label><input type="checkbox" class="fixed-weekday" value="3"> 周三</label>
+                        <label><input type="checkbox" class="fixed-weekday" value="4"> 周四</label>
+                        <label><input type="checkbox" class="fixed-weekday" value="5"> 周五</label>
+                        <label><input type="checkbox" class="fixed-weekday" value="6"> 周六</label>
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-medium">全体固定放假日期 (如 01,15)</label>
+                    <input type="text" id="fixedDates" class="w-full border p-1 rounded" placeholder="用逗号分隔，如 01,15">
+                </div>
+                <div>
+                    <label class="block font-medium">本月休息天数</label>
+                    <input type="number" id="restDaysPerMonth" class="w-full border p-1 rounded" value="8" min="0">
+                </div>
+                <div>
+                    <label class="block font-medium">周六日休息人数上限</label>
+                    <input type="number" id="weekendRestLimit" class="w-full border p-1 rounded" value="3" min="0">
+                </div>
+                <div>
+                    <label class="block font-medium">平时日休息人数上限</label>
+                    <input type="number" id="weekdayRestLimit" class="w-full border p-1 rounded" value="2" min="0">
+                </div>
+                <div>
+                    <label class="block font-medium">每天最少晚班人数 (B+D)</label>
+                    <input type="number" id="minEvening" class="w-full border p-1 rounded" value="0" min="0">
+                </div>
+                <div>
+                    <label class="block font-medium">无需晚班的日期 (如 03,28)</label>
+                    <input type="text" id="noEveningDates" class="w-full border p-1 rounded" placeholder="逗号分隔">
+                </div>
+            </div>
+            <!-- 班次定义（全局保存） -->
+            <div class="mt-3 pt-2 border-t border-gray-200">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="font-semibold text-sm"><i class="fas fa-clock mr-1"></i>班次时间（全局设置）</span>
+                    <button id="saveShiftsBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-0.5 rounded text-xs">保存班次时间</button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                    <div><label class="block font-medium">A班</label><input type="text" id="shiftA" class="w-full border p-1 rounded" value="9:00-18:00"></div>
+                    <div><label class="block font-medium">B班</label><input type="text" id="shiftB" class="w-full border p-1 rounded" value="11:00-20:00"></div>
+                    <div><label class="block font-medium">C班</label><input type="text" id="shiftC" class="w-full border p-1 rounded" value="10:00-19:00"></div>
+                    <div><label class="block font-medium">D班</label><input type="text" id="shiftD" class="w-full border p-1 rounded" value="13:00-22:00"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 排班表格容器 -->
+        <div id="scheduleTableContainer" class="table-scroll">
+            <!-- 动态生成 -->
+        </div>
+
+        <!-- 员工统计区域 -->
+        <div id="scheduleStats" class="mt-3 text-xs bg-gray-50 p-2 rounded border">
+            <!-- 动态显示统计 -->
+        </div>
+    </div>
+</div>
+
+<!-- 登录模态框 -->
+<div id="loginModal" class="modal hidden">
+    <div class="modal-content max-w-md">
+        <h3 class="text-lg font-bold mb-4">登录 (员工表，需启用账号)</h3>
+        <input id="loginUser" type="text" placeholder="账号" class="w-full border p-2 mb-2 rounded" value="运营长">
+        <input id="loginPass" type="password" placeholder="密码" class="w-full border p-2 mb-4 rounded" value="2026">
+        <div class="flex justify-end space-x-2">
+            <button id="closeLoginModal" class="px-4 py-2 bg-gray-300 rounded">取消</button>
+            <button id="loginBtn" class="px-4 py-2 bg-blue-600 text-white rounded">登录</button>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑员工弹窗 -->
+<div id="editModal" class="modal hidden">
+    <div class="modal-content">
+        <h3 class="text-lg font-bold mb-4" id="modalTitle">编辑员工信息</h3>
+        <div id="modalFields" class="grid grid-cols-2 gap-3 text-sm max-h-[60vh] overflow-y-auto"></div>
+        <div class="flex justify-end space-x-2 mt-4">
+            <button id="closeModalBtn" class="px-4 py-2 bg-gray-300 rounded">取消</button>
+            <button id="saveModalBtn" class="px-4 py-2 bg-blue-600 text-white rounded">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // ---------- CouchDB 配置 ----------
+    const COUCHDB_URL = 'http://satoko:1793364876@localhost:5984'; // 请根据实际部署修改，例如 https://your-couchdb.iriscouch.com
+    // 如果不需要同步或无法连接，可以设为 null
+    // const COUCHDB_URL = null;
+
+    // ---------- PouchDB 实例 ----------
+    const dbEmployees = new PouchDB('employees');
+    const dbSchedules = new PouchDB('schedules');
+    const dbScheduleRules = new PouchDB('schedule_rules');
+    const dbGlobalConfig = new PouchDB('global_config'); // 存储班次时间等全局配置
+
+    // ---------- 与远程 CouchDB 同步 ----------
+    function syncWithRemote(db, dbName) {
+        if (!COUCHDB_URL) return;
+        const remoteDB = new PouchDB(`${COUCHDB_URL}/${dbName}`);
+        db.sync(remoteDB, { live: true, retry: true })
+            .on('change', function (change) {
+                console.log(`[sync] ${dbName} change`, change);
+            })
+            .on('paused', function (info) {
+                console.log(`[sync] ${dbName} paused`, info);
+            })
+            .on('active', function () {
+                console.log(`[sync] ${dbName} active`);
+            })
+            .on('denied', function (err) {
+                console.log(`[sync] ${dbName} denied`, err);
+            })
+            .on('complete', function (info) {
+                console.log(`[sync] ${dbName} complete`, info);
+            })
+            .on('error', function (err) {
+                console.log(`[sync] ${dbName} error`, err);
+            });
+    }
+
+    // 启动所有数据库同步
+    syncWithRemote(dbEmployees, 'employees');
+    syncWithRemote(dbSchedules, 'schedules');
+    syncWithRemote(dbScheduleRules, 'schedule_rules');
+    syncWithRemote(dbGlobalConfig, 'global_config');
+
+    // ---------- 默认数据 (添加邮箱字段) ----------
+    const defaultEmployees = [
+        { 账号:'运营长', 密码:'2026', 邮箱:'yunyingzhang@example.com', 是否启用该账号:'是', 备注:'在职' },
+        { 账号:'李老师', 密码:'2025', 邮箱:'lilaoshi@example.com', 是否启用该账号:'是', 备注:'在职' },
+        { 账号:'小小老师', 密码:'2025', 邮箱:'xiaoxiaolaoshi@example.com', 是否启用该账号:'是', 备注:'在职' },
+        { 账号:'王老师', 密码:'2025', 邮箱:'wanglaoshi@example.com', 是否启用该账号:'否', 备注:'离职' }
+    ];
+
+    // 初始化数据库（仅当本地为空时填充默认数据）
+    async function initDB() {
+        // 员工表
+        const empRes = await dbEmployees.allDocs({ limit: 1 });
+        if (empRes.rows.length === 0) {
+            for (let i = 0; i < defaultEmployees.length; i++) {
+                const emp = { 
+                    ...defaultEmployees[i], 
+                    _id: 'emp_' + Date.now() + '_' + i,  // 使用时间戳避免冲突
+                    _ctime: Date.now() - i * 1000 
+                };
+                await dbEmployees.put(emp).catch(e => console.warn('员工表初始化失败', e));
+            }
+        }
+        // 全局配置（班次时间）
+        try {
+            await dbGlobalConfig.get('shifts');
+        } catch (e) {
+            await dbGlobalConfig.put({
+                _id: 'shifts',
+                shiftA: '9:00-18:00',
+                shiftB: '11:00-20:00',
+                shiftC: '10:00-19:00',
+                shiftD: '13:00-22:00'
+            });
+        }
+    }
+    initDB();
+
+    // ---------- 登录状态管理 ----------
+    let currentUser = JSON.parse(sessionStorage.getItem('currentUser')) || null;
+    const userDisplay = document.getElementById('userDisplay');
+    const currentUserName = document.getElementById('currentUserName');
+    const showLoginBtn = document.getElementById('showLoginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loginModal = document.getElementById('loginModal');
+
+    // 管理员硬编码（可访问所有页面，但在此页面只需验证员工表）
+    const ADMIN_ACCOUNT = '管理员';
+    const ADMIN_PASSWORD = '2026';
+
+    function updateLoginUI() {
+        if (currentUser) {
+            userDisplay.classList.remove('hidden');
+            currentUserName.innerText = currentUser.账号 || '';
+            showLoginBtn.classList.add('hidden');
+            logoutBtn.classList.remove('hidden');
+        } else {
+            userDisplay.classList.add('hidden');
+            showLoginBtn.classList.remove('hidden');
+            logoutBtn.classList.add('hidden');
+        }
+        // 渲染当前tab
+        const activeTab = document.querySelector('.tab-btn.text-blue-600').dataset.tab;
+        if (activeTab === 'employee') renderEmployeeTable();
+        else renderScheduleTable();
+    }
+
+    // 判断是否为运营长或管理员（运营长拥有编辑历史月份权限）
+    function isYunYingZhang() {
+        return currentUser && (currentUser.账号 === '运营长' || currentUser.账号 === ADMIN_ACCOUNT);
+    }
+
+    // 判断指定月份是否可编辑
+    function canEditMonth(yearMonth) {
+        const today = new Date();
+        const currentYearMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+        if (yearMonth < currentYearMonth) return isYunYingZhang();
+        return true;
+    }
+
+    // ---------- 工具函数 ----------
+    function escapeHtml(unsafe) {
+        if (unsafe === null || unsafe === undefined) return '';
+        return String(unsafe)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    // ---------- 员工表 (新增邮箱字段) ----------
+    const employeeHeaders = ["账号","密码","邮箱","是否启用该账号","备注"];
+
+    async function renderEmployeeTable() {
+        const allDocs = await dbEmployees.allDocs({ include_docs: true });
+        let rows = allDocs.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design'));
+        rows.sort((a, b) => (b._ctime || 0) - (a._ctime || 0));
+        document.getElementById('employeeCount').innerText = rows.length;
+
+        let html = `<table><thead><tr>${employeeHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join('')}<th style="position:sticky;right:0;background:#edf2f7;">操作</th></tr></thead><tbody>`;
+        rows.forEach(doc => {
+            const rowId = doc._id;
+            html += `<tr data-id="${escapeHtml(rowId)}" data-db="employees" class="cursor-pointer hover:bg-gray-100">`;
+            employeeHeaders.forEach(header => {
+                let val = doc[header] !== undefined ? doc[header] : '';
+                if (typeof val === 'object') val = JSON.stringify(val);
+                const displayVal = val.length > 20 ? val.substring(0, 20) + '…' : val;
+                html += `<td class="editable-cell" data-field="${escapeHtml(header)}" title="${escapeHtml(val)}">${escapeHtml(displayVal)}</td>`;
+            });
+            html += `<td style="position:sticky;right:0;background:white;">
+                <button class="delete-row-btn text-red-600 hover:text-red-800" title="删除"><i class="fas fa-trash"></i></button>
+            </td></tr>`;
+        });
+        html += '</tbody></table>';
+        document.getElementById('employeeTableContainer').innerHTML = html;
+
+        document.querySelectorAll('#employeeTableContainer tbody tr[data-id]').forEach(tr => {
+            tr.addEventListener('click', (e) => {
+                if (e.target.closest('button')) return;
+                const rowId = tr.dataset.id;
+                showEditModal(rowId);
+            });
+        });
+        document.querySelectorAll('#employeeTableContainer .delete-row-btn').forEach(btn => {
+            btn.addEventListener('click', async e => {
+                e.stopPropagation();
+                if (!confirm('确定删除该员工？')) return;
+                const row = e.target.closest('tr');
+                const id = row?.dataset.id;
+                if (!id) return;
+                try {
+                    const doc = await dbEmployees.get(id);
+                    await dbEmployees.remove(doc);
+                    renderEmployeeTable();
+                } catch (er) { alert('删除失败'); }
+            });
+        });
+    }
+
+    document.getElementById('addEmployeeBtn').addEventListener('click', async () => {
+        if (!currentUser) { alert('请先登录'); return; }
+        const newDoc = {
+            _id: 'emp_' + Date.now() + '_' + Math.random().toString(36).substr(2,4),
+            _ctime: Date.now(),
+            账号: '',
+            密码: '',
+            邮箱: '',
+            是否启用该账号: '',
+            备注: ''
+        };
+        await dbEmployees.put(newDoc);
+        renderEmployeeTable();
+    });
+
+    // ---------- 编辑员工弹窗 ----------
+    let currentEditId = null;
+    let currentEditDoc = null;
+
+    async function showEditModal(rowId) {
+        try {
+            const doc = await dbEmployees.get(rowId);
+            currentEditId = rowId;
+            currentEditDoc = doc;
+            const fieldsHtml = employeeHeaders.map(header => {
+                let val = doc[header] !== undefined ? doc[header] : '';
+                if (typeof val === 'object') val = JSON.stringify(val);
+                const escapedVal = escapeHtml(val);
+                if (header === '是否启用该账号') {
+                    const selectedYes = (val === '是') ? 'selected' : '';
+                    const selectedNo = (val === '否') ? 'selected' : '';
+                    return `
+                        <div>
+                            <label class="block font-medium">${escapeHtml(header)}</label>
+                            <select class="w-full border p-1 rounded text-sm modal-field" data-field="${escapeHtml(header)}">
+                                <option value="" ${!val ? 'selected' : ''}>--</option>
+                                <option value="是" ${selectedYes}>是</option>
+                                <option value="否" ${selectedNo}>否</option>
+                            </select>
+                        </div>
+                    `;
+                } else {
+                    return `
+                        <div>
+                            <label class="block font-medium">${escapeHtml(header)}</label>
+                            <input type="text" class="w-full border p-1 rounded text-sm modal-field" data-field="${escapeHtml(header)}" value="${escapedVal}">
+                        </div>
+                    `;
+                }
+            }).join('');
+            document.getElementById('modalFields').innerHTML = fieldsHtml;
+            document.getElementById('modalTitle').innerText = `编辑员工 - ${doc.账号 || '新员工'}`;
+            document.getElementById('editModal').classList.remove('hidden');
+        } catch (e) {
+            alert('无法加载数据');
+        }
+    }
+
+    async function saveModalEdit() {
+        if (!currentEditId || !currentEditDoc) return;
+        const inputs = document.querySelectorAll('#modalFields .modal-field');
+        inputs.forEach(input => {
+            const field = input.dataset.field;
+            if (field) currentEditDoc[field] = input.value;
+        });
+        currentEditDoc._ctime = Date.now();
+        try {
+            await dbEmployees.put(currentEditDoc);
+            alert('保存成功');
+            closeModal();
+            renderEmployeeTable();
+        } catch (e) {
+            console.error(e);
+            alert('保存失败');
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('editModal').classList.add('hidden');
+        currentEditId = null;
+        currentEditDoc = null;
+    }
+
+    // ---------- 排班表 (与之前逻辑一致，但注意依赖的员工表已有邮箱) ----------
+    let currentYearMonth = '';
+
+    async function loadGlobalShifts() {
+        try {
+            const shifts = await dbGlobalConfig.get('shifts');
+            document.getElementById('shiftA').value = shifts.shiftA || '9:00-18:00';
+            document.getElementById('shiftB').value = shifts.shiftB || '11:00-20:00';
+            document.getElementById('shiftC').value = shifts.shiftC || '10:00-19:00';
+            document.getElementById('shiftD').value = shifts.shiftD || '13:00-22:00';
+        } catch (e) {
+            // 使用默认值
+        }
+    }
+
+    // 保存班次时间（全局）
+    document.getElementById('saveShiftsBtn').addEventListener('click', async () => {
+        if (!currentUser) { alert('请先登录'); return; }
+        const shifts = {
+            shiftA: document.getElementById('shiftA').value,
+            shiftB: document.getElementById('shiftB').value,
+            shiftC: document.getElementById('shiftC').value,
+            shiftD: document.getElementById('shiftD').value
+        };
+        try {
+            let doc;
+            try {
+                doc = await dbGlobalConfig.get('shifts');
+            } catch (e) {
+                doc = { _id: 'shifts' };
+            }
+            Object.assign(doc, shifts);
+            doc._ctime = Date.now();
+            await dbGlobalConfig.put(doc);
+            alert('班次时间保存成功');
+        } catch (e) {
+            alert('保存失败');
+        }
+    });
+
+    async function renderScheduleTable() {
+        const monthPicker = document.getElementById('monthPicker');
+        if (!monthPicker.value) {
+            const today = new Date();
+            currentYearMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+            monthPicker.value = currentYearMonth;
+        } else {
+            currentYearMonth = monthPicker.value;
+        }
+
+        // 获取启用员工
+        const allEmps = await dbEmployees.allDocs({ include_docs: true });
+        const employees = allEmps.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design') && d.是否启用该账号 === '是');
+        const employeeNames = employees.map(e => e.账号).filter(name => name);
+
+        if (employeeNames.length === 0) {
+            document.getElementById('scheduleTableContainer').innerHTML = '<p class="text-gray-500 p-2">暂无员工，请先添加启用账号的员工。</p>';
+            document.getElementById('scheduleStats').innerHTML = '';
+            return;
+        }
+
+        const [year, month] = currentYearMonth.split('-').map(Number);
+        const daysInMonth = new Date(year, month, 0).getDate();
+
+        // 获取本月规则
+        const ruleId = `rule_${year}_${month}`;
+        let ruleDoc;
+        try {
+            ruleDoc = await dbScheduleRules.get(ruleId);
+        } catch (e) {
+            ruleDoc = {
+                _id: ruleId,
+                fixedWeekdays: [],
+                fixedDates: [],
+                restDaysPerMonth: 8,
+                weekendRestLimit: 3,
+                weekdayRestLimit: 2,
+                minEvening: 0,
+                noEveningDates: []
+            };
+        }
+        fillRuleForm(ruleDoc);
+
+        // 获取排班数据
+        const scheduleId = `schedule_${year}_${month}`;
+        let scheduleDoc;
+        try {
+            scheduleDoc = await dbSchedules.get(scheduleId);
+        } catch (e) {
+            scheduleDoc = { _id: scheduleId, data: {} };
+        }
+        const scheduleData = scheduleDoc.data || {};
+
+        const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+        const dayHeaders = [];
+        const weekdayHeaders = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+            const date = new Date(year, month - 1, d);
+            dayHeaders.push(d);
+            weekdayHeaders.push(weekdays[date.getDay()]);
+        }
+
+        const editable = canEditMonth(currentYearMonth);
+        document.getElementById('modeText').innerText = editable ? '📝 可编辑模式' : '🔒 只读模式（仅运营长或管理员可编辑）';
+
+        // 构建表格
+        let html = '<table><thead>';
+        html += '<tr><th class="sticky left-0 bg-gray-100" style="left:0;">员工</th>';
+        dayHeaders.forEach(d => html += `<th>${d}</th>`);
+        html += '</tr>';
+        html += '<tr><th class="sticky left-0 bg-gray-100" style="left:0;">星期</th>';
+        weekdayHeaders.forEach(w => html += `<th>${w}</th>`);
+        html += '</tr>';
+        html += '</thead><tbody>';
+
+        const shiftOptions = ['A班', 'B班', 'C班', 'D班', '休息', '调休'];
+
+        employeeNames.forEach(name => {
+            html += `<tr>`;
+            html += `<td class="sticky left-0 bg-white font-medium" style="left:0;">${escapeHtml(name)}</td>`;
+            for (let d = 1; d <= daysInMonth; d++) {
+                const cellValue = scheduleData[name]?.[d] || '';
+                const selectDisabled = !editable ? 'disabled' : '';
+                let optionClass = '';
+                if (cellValue === '休息') optionClass = 'rest';
+                else if (cellValue === '调休') optionClass = 'off';
+                else if (cellValue === 'A班') optionClass = 'a';
+                else if (cellValue === 'B班') optionClass = 'b';
+                else if (cellValue === 'C班') optionClass = 'c';
+                else if (cellValue === 'D班') optionClass = 'd';
+                html += `<td class="schedule-cell"><select class="schedule-select ${optionClass}" data-employee="${escapeHtml(name)}" data-day="${d}" ${selectDisabled}>`;
+                html += `<option value="" ${cellValue === '' ? 'selected' : ''}>--</option>`;
+                shiftOptions.forEach(opt => {
+                    html += `<option value="${opt}" ${cellValue === opt ? 'selected' : ''}>${opt}</option>`;
+                });
+                html += `</select></td>`;
+            }
+            html += `</tr>`;
+        });
+        html += '</tbody></table>';
+        document.getElementById('scheduleTableContainer').innerHTML = html;
+
+        // 绑定下拉变更事件
+        if (editable) {
+            document.querySelectorAll('#scheduleTableContainer select').forEach(select => {
+                select.addEventListener('change', async (e) => {
+                    const emp = e.target.dataset.employee;
+                    const day = e.target.dataset.day;
+                    const val = e.target.value;
+                    let scheduleDoc;
+                    try {
+                        scheduleDoc = await dbSchedules.get(scheduleId);
+                    } catch (e) {
+                        scheduleDoc = { _id: scheduleId, data: {} };
+                    }
+                    if (!scheduleDoc.data) scheduleDoc.data = {};
+                    if (!scheduleDoc.data[emp]) scheduleDoc.data[emp] = {};
+                    scheduleDoc.data[emp][day] = val;
+                    scheduleDoc._ctime = Date.now();
+                    await dbSchedules.put(scheduleDoc);
+                    // 更新单元格样式
+                    updateCellClass(e.target, val);
+                    // 重新计算统计
+                    computeStats(employeeNames, scheduleDoc.data, daysInMonth, year, month);
+                    // 校验规则并标记粉红
+                    validateAndMark(employeeNames, scheduleDoc.data, daysInMonth, year, month, ruleDoc);
+                });
+            });
+        }
+
+        // 初始统计和校验
+        computeStats(employeeNames, scheduleData, daysInMonth, year, month);
+        validateAndMark(employeeNames, scheduleData, daysInMonth, year, month, ruleDoc);
+    }
+
+    function updateCellClass(select, val) {
+        select.className = 'schedule-select';
+        if (val === '休息') select.classList.add('rest');
+        else if (val === '调休') select.classList.add('off');
+        else if (val === 'A班') select.classList.add('a');
+        else if (val === 'B班') select.classList.add('b');
+        else if (val === 'C班') select.classList.add('c');
+        else if (val === 'D班') select.classList.add('d');
+    }
+
+    function fillRuleForm(ruleDoc) {
+        document.querySelectorAll('.fixed-weekday').forEach(cb => {
+            cb.checked = ruleDoc.fixedWeekdays?.includes(parseInt(cb.value)) || false;
+        });
+        document.getElementById('fixedDates').value = ruleDoc.fixedDates ? ruleDoc.fixedDates.join(',') : '';
+        document.getElementById('restDaysPerMonth').value = ruleDoc.restDaysPerMonth || 8;
+        document.getElementById('weekendRestLimit').value = ruleDoc.weekendRestLimit || 3;
+        document.getElementById('weekdayRestLimit').value = ruleDoc.weekdayRestLimit || 2;
+        document.getElementById('minEvening').value = ruleDoc.minEvening || 0;
+        document.getElementById('noEveningDates').value = ruleDoc.noEveningDates ? ruleDoc.noEveningDates.join(',') : '';
+    }
+
+    function collectRuleForm() {
+        const fixedWeekdays = [];
+        document.querySelectorAll('.fixed-weekday:checked').forEach(cb => fixedWeekdays.push(parseInt(cb.value)));
+        const fixedDates = document.getElementById('fixedDates').value.split(',').map(s => s.trim()).filter(s => s);
+        const restDaysPerMonth = parseInt(document.getElementById('restDaysPerMonth').value) || 8;
+        const weekendRestLimit = parseInt(document.getElementById('weekendRestLimit').value) || 3;
+        const weekdayRestLimit = parseInt(document.getElementById('weekdayRestLimit').value) || 2;
+        const minEvening = parseInt(document.getElementById('minEvening').value) || 0;
+        const noEveningDates = document.getElementById('noEveningDates').value.split(',').map(s => s.trim()).filter(s => s);
+        return { fixedWeekdays, fixedDates, restDaysPerMonth, weekendRestLimit, weekdayRestLimit, minEvening, noEveningDates };
+    }
+
+    // 保存规则并自动填充排班表
+    document.getElementById('saveRulesBtn').addEventListener('click', async () => {
+        if (!currentUser) { alert('请先登录'); return; }
+        const [year, month] = currentYearMonth.split('-').map(Number);
+        const ruleId = `rule_${year}_${month}`;
+        const ruleData = collectRuleForm();
+        try {
+            let doc;
+            try {
+                doc = await dbScheduleRules.get(ruleId);
+            } catch (e) {
+                doc = { _id: ruleId };
+            }
+            Object.assign(doc, ruleData);
+            doc._ctime = Date.now();
+            await dbScheduleRules.put(doc);
+
+            // 自动填充排班表：根据全体固定休息日和固定日期，将对应单元格设为“休息”
+            const scheduleId = `schedule_${year}_${month}`;
+            let scheduleDoc;
+            try {
+                scheduleDoc = await dbSchedules.get(scheduleId);
+            } catch (e) {
+                scheduleDoc = { _id: scheduleId, data: {} };
+            }
+            const scheduleData = scheduleDoc.data || {};
+            const allEmps = await dbEmployees.allDocs({ include_docs: true });
+            const employees = allEmps.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design') && d.是否启用该账号 === '是');
+            const employeeNames = employees.map(e => e.账号).filter(name => name);
+            const daysInMonth = new Date(year, month, 0).getDate();
+
+            // 应用规则：全体固定休息日星期
+            const fixedWeekdaysSet = new Set(ruleData.fixedWeekdays);
+            const fixedDatesSet = new Set(ruleData.fixedDates);
+
+            let changed = false;
+            for (let d = 1; d <= daysInMonth; d++) {
+                const date = new Date(year, month - 1, d);
+                const weekday = date.getDay();
+                const dayStr = String(d).padStart(2, '0');
+                if (fixedWeekdaysSet.has(weekday) || fixedDatesSet.has(dayStr)) {
+                    // 对所有员工设置“休息”
+                    employeeNames.forEach(name => {
+                        if (!scheduleData[name]) scheduleData[name] = {};
+                        if (scheduleData[name][d] !== '休息') {
+                            scheduleData[name][d] = '休息';
+                            changed = true;
+                        }
+                    });
+                }
+            }
+            if (changed) {
+                scheduleDoc.data = scheduleData;
+                scheduleDoc._ctime = Date.now();
+                await dbSchedules.put(scheduleDoc);
+            }
+            alert('规则保存成功，并已自动填充全体休息日');
+            renderScheduleTable(); // 重新渲染
+        } catch (e) {
+            console.error(e);
+            alert('保存失败');
+        }
+    });
+
+    // 校验规则并标记粉红底色
+    function validateAndMark(employeeNames, scheduleData, daysInMonth, year, month, ruleDoc) {
+        const weekendRestLimit = ruleDoc.weekendRestLimit || 3;
+        const weekdayRestLimit = ruleDoc.weekdayRestLimit || 2;
+        const minEvening = ruleDoc.minEvening || 0;
+        const noEveningSet = new Set(ruleDoc.noEveningDates || []);
+
+        // 清除所有粉红底色
+        document.querySelectorAll('#scheduleTableContainer select').forEach(sel => sel.classList.remove('warning-pink'));
+
+        // 检查每天休息人数
+        for (let d = 1; d <= daysInMonth; d++) {
+            const date = new Date(year, month - 1, d);
+            const isWeekend = (date.getDay() === 0 || date.getDay() === 6);
+            const limit = isWeekend ? weekendRestLimit : weekdayRestLimit;
+            let restCount = 0;
+            employeeNames.forEach(name => {
+                const val = scheduleData[name]?.[d];
+                if (val === '休息' || val === '调休') restCount++;
+            });
+            if (restCount > limit) {
+                // 标记该列所有单元格为粉红
+                employeeNames.forEach(name => {
+                    const sel = document.querySelector(`select[data-employee="${name}"][data-day="${d}"]`);
+                    if (sel) sel.classList.add('warning-pink');
+                });
+            }
+        }
+
+        // 检查每天晚班人数
+        for (let d = 1; d <= daysInMonth; d++) {
+            if (noEveningSet.has(String(d).padStart(2, '0'))) continue;
+            let eveningCount = 0;
+            employeeNames.forEach(name => {
+                const val = scheduleData[name]?.[d];
+                if (val === 'B班' || val === 'D班') eveningCount++;
+            });
+            if (eveningCount < minEvening) {
+                employeeNames.forEach(name => {
+                    const sel = document.querySelector(`select[data-employee="${name}"][data-day="${d}"]`);
+                    if (sel) sel.classList.add('warning-pink');
+                });
+            }
+        }
+    }
+
+    // 统计计算
+    function computeStats(employeeNames, scheduleData, daysInMonth, year, month) {
+        let statsHtml = '<div class="font-medium mb-1">📊 员工本月统计</div>';
+        employeeNames.forEach(name => {
+            let restCount = 0;
+            let weekendRestCount = 0;
+            let eveningCount = 0;
+            for (let d = 1; d <= daysInMonth; d++) {
+                const val = scheduleData[name]?.[d] || '';
+                if (val === '休息') {
+                    restCount++;
+                    const date = new Date(year, month - 1, d);
+                    const w = date.getDay();
+                    if (w === 0 || w === 6) weekendRestCount++;
+                }
+                if (val === 'B班' || val === 'D班') eveningCount++;
+            }
+            statsHtml += `<span class="stat-item">${escapeHtml(name)}: 休息${restCount}天 (周末休${weekendRestCount}) 晚班${eveningCount}次</span>`;
+        });
+        document.getElementById('scheduleStats').innerHTML = statsHtml;
+    }
+
+    document.getElementById('saveScheduleBtn').addEventListener('click', () => {
+        alert('所有修改已自动保存');
+    });
+
+    document.getElementById('refreshScheduleBtn').addEventListener('click', renderScheduleTable);
+
+    document.getElementById('monthPicker').addEventListener('change', renderScheduleTable);
+
+    // 规则面板折叠
+    const rulePanel = document.getElementById('rulePanel');
+    const toggleBtn = document.getElementById('toggleRulePanel');
+    toggleBtn.addEventListener('click', () => {
+        rulePanel.classList.toggle('collapsed');
+        toggleBtn.classList.toggle('rotated');
+    });
+
+    // ---------- 选项卡切换 ----------
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('text-blue-600', 'border-b-2', 'border-blue-500'));
+            btn.classList.add('text-blue-600', 'border-b-2', 'border-blue-500');
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+            const tab = btn.dataset.tab;
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+            if (tab === 'employee') renderEmployeeTable();
+            else {
+                loadGlobalShifts();
+                renderScheduleTable();
+            }
+        });
+    });
+
+    // ---------- 全屏 ----------
+    const container = document.querySelector('.max-w-7xl.mx-auto.bg-white.p-4.rounded.shadow');
+    document.getElementById('fullscreenBtn').addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+            container.requestFullscreen().catch(err => alert('全屏失败'));
+        } else {
+            document.exitFullscreen();
+        }
+    });
+
+    // ---------- 导出 ----------
+    async function exportCurrentTab() {
+        if (!currentUser) { alert('请先登录'); return; }
+        const activeTab = document.querySelector('.tab-btn.text-blue-600').dataset.tab;
+        const wb = XLSX.utils.book_new();
+        if (activeTab === 'employee') {
+            const allDocs = await dbEmployees.allDocs({ include_docs: true });
+            let rows = allDocs.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design'));
+            const headers = employeeHeaders;
+            const data = rows.map(d => headers.map(h => d[h] !== undefined ? d[h] : ''));
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+            XLSX.utils.book_append_sheet(wb, ws, '员工表');
+        } else {
+            // 导出当前排班表
+            const [year, month] = currentYearMonth.split('-').map(Number);
+            const allEmps = await dbEmployees.allDocs({ include_docs: true });
+            const employees = allEmps.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design') && d.是否启用该账号 === '是');
+            const employeeNames = employees.map(e => e.账号).filter(name => name);
+            const scheduleId = `schedule_${year}_${month}`;
+            let scheduleDoc;
+            try {
+                scheduleDoc = await dbSchedules.get(scheduleId);
+            } catch (e) {
+                scheduleDoc = { data: {} };
+            }
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            // 构建二维数组
+            const headers = ['员工', ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+            const data = [];
+            employeeNames.forEach(name => {
+                const row = [name];
+                for (let d = 1; d <= daysInMonth; d++) {
+                    row.push(scheduleDoc.data?.[name]?.[d] || '');
+                }
+                data.push(row);
+            });
+            // 添加星期行
+            const weekdayRow = ['星期', ...weekdays.slice(0, daysInMonth).map((_, idx) => weekdays[new Date(year, month - 1, idx + 1).getDay()])];
+            data.unshift(weekdayRow);
+            data.unshift(headers);
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            XLSX.utils.book_append_sheet(wb, ws, `排班表_${year}年${month}月`);
+        }
+        XLSX.writeFile(wb, `${activeTab}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+
+    document.getElementById('exportCurrentBtn').addEventListener('click', exportCurrentTab);
+
+    document.getElementById('exportAllBtn').addEventListener('click', async () => {
+        alert('导出全部功能包含员工表和所有排班表，可自行扩展');
+    });
+
+    document.getElementById('importBtn').addEventListener('click', () => {
+        alert('导入功能可自行扩展');
+    });
+
+    // ---------- 登录模态框事件 ----------
+    document.getElementById('showLoginBtn').addEventListener('click', () => {
+        loginModal.classList.remove('hidden');
+    });
+    document.getElementById('closeLoginModal').addEventListener('click', () => {
+        loginModal.classList.add('hidden');
+    });
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+        const acc = document.getElementById('loginUser').value;
+        const pwd = document.getElementById('loginPass').value;
+
+        // 管理员硬编码检查
+        if (acc === ADMIN_ACCOUNT && pwd === ADMIN_PASSWORD) {
+            // 构造一个虚拟管理员对象
+            currentUser = { 账号: ADMIN_ACCOUNT, 是否启用该账号: '是' };
+            sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+            updateLoginUI();
+            loginModal.classList.add('hidden');
+            return;
+        }
+
+        // 普通员工验证
+        try {
+            const res = await dbEmployees.allDocs({ include_docs: true });
+            const users = res.rows.map(r => r.doc);
+            const found = users.find(u => u.账号 === acc && u.密码 === pwd && u.是否启用该账号 === '是');
+            if (found) {
+                currentUser = found;
+                sessionStorage.setItem('currentUser', JSON.stringify(found));
+                updateLoginUI();
+                loginModal.classList.add('hidden');
+            } else {
+                alert('登录失败：账号/密码错误或账号未启用');
+            }
+        } catch (e) {
+            alert('登录验证失败');
+        }
+    });
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        currentUser = null;
+        sessionStorage.removeItem('currentUser');
+        updateLoginUI();
+    });
+
+    // 弹窗关闭
+    document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+    document.getElementById('saveModalBtn').addEventListener('click', saveModalEdit);
+
+    // 初始化
+    updateLoginUI();
+})();
+</script>
+<!-- 数据存储说明：员工、排班、规则、班次时间均保存在浏览器本地IndexedDB，并与远程CouchDB实时同步。管理员账号 admin/2026 可访问所有页面。 -->
+</body>
+</html>

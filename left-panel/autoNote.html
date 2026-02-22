@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自动记单 · 学员管理（班型联动+邮箱验证+类别必选）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
+    <style>
+        .tab-active { background-color: #e0f2fe; border-bottom: 2px solid #0284c7; }
+        .no-scrollbar { overflow: visible !important; max-height: none !important; }
+        .stretch-textarea { min-height: 220px; resize: vertical; }
+        .combo-field { display: flex; gap: 4px; align-items: center; }
+        .warning-pink { background-color: #fce4e4; border-color: #f5c6cb; }
+        .error-tip { color: #dc2626; font-size: 0.7rem; margin-top: 2px; display: none; }
+        .field-error { border: 1px solid #dc2626 !important; }
+        .province-hint { font-size: 0.7rem; color: #6b7280; margin-top: 2px; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans p-4">
+
+<!-- 右上角导航 -->
+<div class="max-w-7xl mx-auto mb-2 flex justify-end space-x-3 text-sm">
+    <a href="autoNote.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-pen-fancy mr-1"></i>自动记单</a>
+    <a href="masterTable.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-table mr-1"></i>运营登记大表</a>
+    <a href="admin.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-lock mr-1"></i>管理权限</a>
+</div>
+
+<!-- 登录状态条 -->
+<div class="max-w-7xl mx-auto mb-4 flex justify-between items-center bg-white p-2 rounded shadow">
+    <span class="text-sm text-gray-600"><i class="fas fa-database mr-1 text-blue-500"></i>本地优先 + PouchDB 就绪 (与CouchDB实时同步)</span>
+    <div id="loginStatus" class="text-sm">
+        <span id="userDisplay" class="hidden mr-2">👤 <span id="currentUserName"></span></span>
+        <button id="showLoginBtn" class="bg-blue-500 text-white px-3 py-1 rounded text-sm"><i class="fas fa-sign-in-alt mr-1"></i>登录</button>
+        <button id="logoutBtn" class="bg-gray-300 px-3 py-1 rounded text-sm hidden">退出</button>
+    </div>
+</div>
+
+<!-- 主内容 -->
+<div class="max-w-7xl mx-auto">
+    <!-- 上面左右两栏 -->
+    <div class="grid grid-cols-2 gap-4 items-stretch">
+        <!-- 左边粘贴区 -->
+        <div class="bg-white p-4 rounded shadow flex flex-col">
+            <label class="block font-semibold mb-2"><i class="fas fa-clipboard mr-1"></i>粘贴招生对接信息 (自动解析)</label>
+            <textarea id="rawInput" class="w-full border rounded p-2 text-sm font-mono flex-1 stretch-textarea" placeholder="例如：&#10;姓名：吴知云&#10;性别：女&#10;最高学历：本科&#10;毕业院校：北京大学&#10;毕业时间：2014年6月&#10;报考专业：工程管理&#10;报考院校：广东工业大学&#10;邮箱：andy5201314@163.com&#10;地址:广州市天堂镇..."></textarea>
+            <div class="grid grid-cols-2 gap-2 mt-3">
+                <button id="parseBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-2 rounded text-sm"><i class="fas fa-robot mr-1"></i>解析并填充</button>
+                <button id="resetBtn" class="bg-gray-500 hover:bg-gray-600 text-white px-2 py-2 rounded text-sm"><i class="fas fa-undo-alt mr-1"></i>数据重置</button>
+            </div>
+        </div>
+        <!-- 右边表单区 -->
+        <div class="bg-white p-4 rounded shadow no-scrollbar">
+            <h3 class="font-semibold mb-2 flex"><i class="fas fa-edit text-green-600 mr-1"></i>提取后编辑 (实时生成记单预览)</h3>
+            <div class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                <div>
+                    <label>@姓名</label><input id="field_name" class="w-full border p-1 rounded">
+                </div>
+                <div>
+                    <label>@手机号 <span class="text-red-400">*</span></label>
+                    <input id="field_mobile" class="w-full border p-1 rounded" maxlength="11">
+                    <div class="error-tip" id="error_mobile">请输入11位手机号</div>
+                </div>
+                <div><label>@班型</label><input id="field_className" class="w-full border p-1 rounded" placeholder="例如：《管理类联考笔试+复试》VIP..."></div>
+                <div>
+                    <label>@户籍 <span class="text-red-400">*</span></label>
+                    <input id="field_domicile" class="w-full border p-1 rounded" placeholder="如：XX省XX市、XX市">
+                    <div class="error-tip" id="error_domicile">请填写“XX省XX市”或直辖市“XX市”</div>
+                </div>
+                <div>
+                    <label>@工作/生活城市</label>
+                    <input id="field_workCity" class="w-full border p-1 rounded" placeholder="XX省XX市/XX市">
+                    <div class="error-tip" id="error_workCity">格式：XX省XX市 或 XX市</div>
+                </div>
+                <div>
+                    <label>@社保城市 <span class="text-red-400">*</span></label>
+                    <input id="field_socialCity" class="w-full border p-1 rounded" placeholder="如：XX省XX市、XX市">
+                    <div class="error-tip" id="error_socialCity">请填写“XX省XX市”或直辖市“XX市”</div>
+                </div>
+                <div><label>@社保时长</label><input id="field_socialDuration" class="w-full border p-1 rounded"></div>
+                <div><label>@意向院校 <span class="text-red-400">*</span></label><input id="field_targetSchool" class="w-full border p-1 rounded"></div>
+                <div><label>@意向专业 <span class="text-red-400">*</span></label><input id="field_targetMajor" class="w-full border p-1 rounded"></div>
+                <div>
+                    <label>@意向学习城市 <span class="text-red-400">*</span></label>
+                    <input id="field_studyCity" class="w-full border p-1 rounded" placeholder="建议填省份+城市，如XX省XX市">
+                    <div class="error-tip" id="error_studyCity">格式建议：XX省XX市</div>
+                </div>
+                <div><label>@最高学历 <span class="text-red-400">*</span></label><input id="field_highestEdu" class="w-full border p-1 rounded"></div>
+                <div>
+                    <label>@毕业时间 <span class="text-red-400">*</span></label>
+                    <input id="field_graduationYear" class="w-full border p-1 rounded" placeholder="例如：2016年 或 2016年06月">
+                    <div class="error-tip" id="error_graduationYear">格式：XXXX年 或 XXXX年XX月</div>
+                </div>
+                <div><label>@其他学历</label><input id="field_otherEdu" class="w-full border p-1 rounded"></div>
+                <div>
+                    <label>@其他学历获取时间</label>
+                    <input id="field_otherEduDate" class="w-full border p-1 rounded" placeholder="XXXX年 或 XXXX年XX月">
+                    <div class="error-tip" id="error_otherEduDate">格式：XXXX年 或 XXXX年XX月</div>
+                </div>
+                <!-- 毕业证原件是否在：下拉 -->
+                <div><label>@毕业证原件是否在</label>
+                    <select id="field_certOriginal" class="w-full border p-1 rounded">
+                        <option value="">-- 请选择 --</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div>
+                    <label>@邮箱号码 <span class="text-red-400">*</span></label>
+                    <input id="field_email" class="w-full border p-1 rounded" placeholder="例如：name@example.com">
+                    <div class="error-tip" id="error_email">邮箱格式不正确，需包含@和域名</div>
+                </div>
+                <!-- 是否常用手机：下拉 -->
+                <div><label>@是否常用手机</label>
+                    <select id="field_isMobileCommon" class="w-full border p-1 rounded">
+                        <option value="">-- 请选择 --</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div><label>@其他手机号</label><input id="field_otherMobile" class="w-full border p-1 rounded"></div>
+                <div><label>@微信号</label><input id="field_wechat" class="w-full border p-1 rounded"></div>
+                <!-- 寄件地址不参与记单，但保留输入框 -->
+                <div class="col-span-2"><label>@寄件接收地址 (不记入记单)</label><input id="field_mailingAddress" class="w-full border p-1 rounded"></div>
+            </div>
+            <div class="flex justify-end mt-4 space-x-2">
+                <button id="saveAndNoteBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded text-sm"><i class="fas fa-save mr-1"></i>记单→保存&录入</button>
+            </div>
+            <p id="mergeWarning" class="text-xs text-red-500 mt-1"></p>
+        </div>
+    </div>
+
+    <!-- 下面大面板：自动记单 -->
+    <div class="bg-white p-4 rounded shadow mt-6">
+        <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <span class="font-semibold"><i class="fas fa-comment-dots text-blue-500 mr-1"></i>自动记单 (实时预览，寄件地址不参与)</span>
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="flex items-center gap-1">
+                    <select id="categorySelect" class="border p-1 rounded text-sm">
+                        <option value="">-- 请选择记单类别 --</option>
+                        <option value="【开班已完成】@">【开班已完成】@</option>
+                        <option value="【开班未完成】@">【开班未完成】@</option>
+                        <option value="【售后】@">【售后】@</option>
+                        <option value="【督学回访】@">【督学回访】@</option>
+                        <option value="自定义">✨ 自定义</option>
+                    </select>
+                    <input type="text" id="categoryCustom" placeholder="输入类别" class="border p-1 rounded text-sm w-28 hidden" value="">
+                </div>
+                <div class="flex items-center gap-1">
+                    <select id="modeSelect" class="border p-1 rounded text-sm">
+                        <option value="小手机开班">小手机开班</option>
+                        <option value="微信开班">微信开班</option>
+                        <option value="语音开班">语音开班</option>
+                        <option value="自定义">✨ 自定义</option>
+                    </select>
+                    <input type="text" id="modeCustom" placeholder="输入模式" class="border p-1 rounded text-sm w-28 hidden" value="">
+                </div>
+                <div class="flex items-center gap-1">
+                    <select id="projectSelect" class="border p-1 rounded text-sm">
+                        <option value="">-- 项目类别 --</option>
+                        <option value="单笔试">单笔试</option>
+                        <option value="笔试+复试">笔试+复试</option>
+                        <option value="笔面联报">笔面联报</option>
+                        <option value="双考期">双考期</option>
+                        <option value="自定义">✨ 自定义</option>
+                    </select>
+                    <input type="text" id="projectCustom" placeholder="输入项目类别" class="border p-1 rounded text-sm w-28 hidden" value="">
+                </div>
+                <select id="phraseSelect" class="border p-1 rounded text-sm w-44">
+                    <option value="">选择记单话术</option>
+                </select>
+            </div>
+        </div>
+        <textarea id="memoPanel" rows="23" class="w-full border rounded p-2 font-mono text-sm" placeholder="记单内容实时预览 (不含寄件地址)"></textarea>
+    </div>
+</div>
+
+<!-- 登录模态框 -->
+<div id="loginModal" class="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center hidden">
+    <div class="bg-white p-6 rounded shadow-lg w-96">
+        <h3 class="text-lg font-bold mb-4">登录 (员工表，需启用账号)</h3>
+        <input id="loginUser" type="text" placeholder="账号" class="w-full border p-2 mb-2 rounded" value="管理员">
+        <input id="loginPass" type="password" placeholder="密码" class="w-full border p-2 mb-4 rounded" value="2026">
+        <div class="flex justify-end space-x-2">
+            <button id="closeLoginModal" class="px-4 py-2 bg-gray-300 rounded">取消</button>
+            <button id="loginBtn" class="px-4 py-2 bg-blue-600 text-white rounded">登录</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // ---------- CouchDB 配置 ----------
+    const COUCHDB_URL = 'http://satoko:1793364876@localhost:5984'; // 请根据实际部署修改
+
+    // ---------- 数据库工厂 ----------
+    const createDB = (name) => {
+        const localDB = new PouchDB(name);
+        if (COUCHDB_URL) {
+            const remoteDB = new PouchDB(`${COUCHDB_URL}/${name}`);
+            localDB.sync(remoteDB, { live: true, retry: true })
+                .on('error', console.warn);
+        }
+        return localDB;
+    };
+
+    // 所有数据库实例
+    const dbStudents = createDB('students');
+    const dbInvoices = createDB('invoices');
+    const dbMailings = createDB('mailings');
+    const dbProject = createDB('project_category');
+    const dbPhrase = createDB('memo_phrase');
+    const dbEmployees = createDB('employees');
+
+    // ---------- 默认数据 (仅在数据库为空时填充) ----------
+    const defaultEmployees = [
+        { _id: 'emp_admin', 账号:'管理员', 密码:'2026', 邮箱:'admin@example.com', 是否启用该账号:'是', 备注:'在职' },
+        { _id: 'emp_lisan', 账号:'李老师', 密码:'2025', 邮箱:'lisan@example.com', 是否启用该账号:'是', 备注:'在职' },
+        { _id: 'emp_little', 账号:'小小老师', 密码:'2025', 邮箱:'xiaoxiao@example.com', 是否启用该账号:'是', 备注:'在职' },
+        { _id: 'emp_wang', 账号:'王老师', 密码:'2025', 邮箱:'wang@example.com', 是否启用该账号:'否', 备注:'离职' }
+    ];
+    const defaultProject = [
+        { _id: 'proj_1', 报读项目类别:'单笔试', 项目1:'《管理类联考笔试》VIP定制直通班（活动特供班）2025', 项目2:'《管理类联考笔试》VIP无忧班（2026）', 项目3:'《管理类联考笔试》VIP菁英班2025' },
+        { _id: 'proj_2', 报读项目类别:'笔试+复试', 项目1:'《管理类联考笔试+复试》VIP名校协议班2026', 项目2:'', 项目3:'' },
+        { _id: 'proj_3', 报读项目类别:'笔面联报', 项目1:'《管理类联考笔面联报》VIP定制无忧班2026', 项目2:'', 项目3:'' },
+        { _id: 'proj_4', 报读项目类别:'双考期', 项目1:'《管理类联考笔试》VIP定制直通班（全国）2025+2026', 项目2:'', 项目3:'' }
+    ];
+    const defaultPhrase = [
+        { _id: 'phrase_1', 序号:1, 快捷标签:'自定义', 记单内容:'@自定义内容' },
+        { _id: 'phrase_2', 序号:2, 快捷标签:'提醒开学典礼', 记单内容:'@微信左下角【消息】栏弹出的邀请通知……@课程学习都是在微信公众号和网页上面进行……@开学典礼安排在6月27号……@工作时间上午10-晚上7点' }
+    ];
+
+    function initDB() {
+        dbEmployees.allDocs({ include_docs: true }).then(res => { if (res.rows.length === 0) defaultEmployees.forEach(emp => dbEmployees.put(emp)); });
+        dbProject.allDocs({ include_docs: true }).then(res => { if (res.rows.length === 0) defaultProject.forEach(p => dbProject.put(p)); });
+        dbPhrase.allDocs({ include_docs: true }).then(res => { if (res.rows.length === 0) defaultPhrase.forEach(p => dbPhrase.put(p)); });
+    }
+    initDB();
+
+    // ---------- 登录状态管理 ----------
+    const ADMIN_ACCOUNT = '管理员';
+    const ADMIN_PASSWORD = '2026';
+    let currentUser = JSON.parse(sessionStorage.getItem('currentUser')) || null;
+    const userDisplay = document.getElementById('userDisplay');
+    const currentUserName = document.getElementById('currentUserName');
+    const showLoginBtn = document.getElementById('showLoginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loginModal = document.getElementById('loginModal');
+
+    function updateLoginUI() {
+        if (currentUser) {
+            userDisplay.classList.remove('hidden');
+            currentUserName.innerText = currentUser.账号 || '';
+            showLoginBtn.classList.add('hidden');
+            logoutBtn.classList.remove('hidden');
+        } else {
+            userDisplay.classList.add('hidden');
+            showLoginBtn.classList.remove('hidden');
+            logoutBtn.classList.add('hidden');
+        }
+    }
+    updateLoginUI();
+
+    function requireLogin() {
+        if (!currentUser) {
+            alert('请先登录');
+            loginModal.classList.remove('hidden');
+            return false;
+        }
+        return true;
+    }
+
+    document.getElementById('showLoginBtn').addEventListener('click', () => { loginModal.classList.remove('hidden'); });
+    document.getElementById('closeLoginModal').addEventListener('click', () => { loginModal.classList.add('hidden'); });
+    document.getElementById('loginBtn').addEventListener('click', () => {
+        const acc = document.getElementById('loginUser').value;
+        const pwd = document.getElementById('loginPass').value;
+
+        // 管理员硬编码
+        if (acc === ADMIN_ACCOUNT && pwd === ADMIN_PASSWORD) {
+            currentUser = { 账号: ADMIN_ACCOUNT, 是否启用该账号: '是' };
+            sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+            updateLoginUI();
+            loginModal.classList.add('hidden');
+            return;
+        }
+
+        // 普通员工
+        dbEmployees.allDocs({ include_docs: true }).then(res => {
+            const users = res.rows.map(r => r.doc);
+            const found = users.find(u => u.账号 === acc && u.密码 === pwd && u.是否启用该账号 === '是');
+            if (found) {
+                currentUser = found;
+                sessionStorage.setItem('currentUser', JSON.stringify(found));
+                updateLoginUI();
+                loginModal.classList.add('hidden');
+            } else { alert('登录失败：账号/密码错误或账号未启用'); }
+        });
+    });
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        currentUser = null; sessionStorage.removeItem('currentUser'); updateLoginUI();
+    });
+
+    // ---------- 以下为原有自动记单逻辑，保持不变 ----------
+    // 省份关键词列表 (用于提取省份)
+    const PROVINCE_KEYWORDS = [
+        '北京', '天津', '上海', '重庆',
+        '河北', '山西', '辽宁', '吉林', '黑龙江',
+        '江苏', '浙江', '安徽', '福建', '江西', '山东',
+        '河南', '湖北', '湖南', '广东', '海南',
+        '四川', '贵州', '云南', '陕西', '甘肃', '青海', '台湾',
+        '内蒙古', '广西', '西藏', '宁夏', '新疆',
+        '香港', '澳门'
+    ];
+    function extractProvince(str) {
+        if (!str) return '';
+        for (let kw of PROVINCE_KEYWORDS) {
+            if (str.includes(kw)) {
+                return kw;
+            }
+        }
+        return '';
+    }
+
+    // 从社保城市字符串中拆分省份和城市
+    function splitSocialCity(socialCity) {
+        if (!socialCity) return { province: '', city: socialCity };
+        const province = extractProvince(socialCity);
+        if (province) {
+            let city = socialCity.replace(province, '').trim();
+            if (!city) city = province;
+            return { province, city };
+        }
+        return { province: '', city: socialCity };
+    }
+
+    function extractProvinceFromSchool(school) {
+        return extractProvince(school);
+    }
+
+    // 字段定义
+    const FIELD_MAPPING = [
+        { id: 'field_name', label: '姓名', required: true },
+        { id: 'field_mobile', label: '手机号', required: true },
+        { id: 'field_className', label: '班型', required: true },
+        { id: 'field_domicile', label: '户籍', required: true },
+        { id: 'field_workCity', label: '工作和生活城市', required: false },
+        { id: 'field_socialCity', label: '社保城市', required: true },
+        { id: 'field_socialDuration', label: '社保时长', required: false },
+        { id: 'field_targetSchool', label: '意向院校', required: true },
+        { id: 'field_targetMajor', label: '意向专业', required: true },
+        { id: 'field_studyCity', label: '意向学习城市', required: true },
+        { id: 'field_highestEdu', label: '最高学历', required: true },
+        { id: 'field_graduationYear', label: '毕业时间', required: true },
+        { id: 'field_certOriginal', label: '毕业证原件是否在', required: false },
+        { id: 'field_email', label: '邮箱号码', required: true },
+        { id: 'field_isMobileCommon', label: '是否常用手机', required: false },
+        { id: 'field_otherMobile', label: '其他手机号', required: false },
+        { id: 'field_wechat', label: '微信号', required: false },
+        { id: 'field_otherEdu', label: '其他学历', required: false },
+        { id: 'field_otherEduDate', label: '其他学历获取时间', required: false }
+    ];
+    const IGNORE_FIELDS = ['field_mailingAddress'];
+
+    // 验证函数
+    function validateField(id, value) {
+        if (id === 'field_mobile') {
+            return /^\d{11}$/.test(value);
+        }
+        if (id === 'field_graduationYear' || id === 'field_otherEduDate') {
+            return value === '' || /^\d{4}年(\d{1,2}月)?$/.test(value);
+        }
+        if (id === 'field_email') {
+            return value === '' || /^\S+@\S+\.\S+$/.test(value);
+        }
+        return true;
+    }
+
+    // 粉红提醒：意向学习城市省份与意向院校省份不一致
+    function checkStudyCityConsistency() {
+        const studyCity = document.getElementById('field_studyCity').value;
+        const targetSchool = document.getElementById('field_targetSchool').value;
+        const studyInput = document.getElementById('field_studyCity');
+        if (!studyCity || !targetSchool) {
+            studyInput.classList.remove('warning-pink');
+            return;
+        }
+        const studyProv = extractProvince(studyCity);
+        const schoolProv = extractProvinceFromSchool(targetSchool);
+        if (studyProv && schoolProv && studyProv !== schoolProv) {
+            studyInput.classList.add('warning-pink');
+        } else {
+            studyInput.classList.remove('warning-pink');
+        }
+    }
+
+    // 格式化毕业时间
+    function formatGraduationField(input) {
+        if (!input) return;
+        let val = input.value.trim();
+        if (/^\d{4}$/.test(val)) {
+            input.value = val + '年';
+        }
+    }
+
+    // 实时验证+格式化
+    function attachValidation() {
+        FIELD_MAPPING.forEach(f => {
+            const input = document.getElementById(f.id);
+            if (!input) return;
+            input.addEventListener('input', function() {
+                const errId = `error_${f.id.replace('field_','')}`;
+                const errEl = document.getElementById(errId);
+                if (errEl) errEl.style.display = 'none';
+                this.classList.remove('field-error');
+                if (f.id === 'field_studyCity' || f.id === 'field_targetSchool') checkStudyCityConsistency();
+            });
+            input.addEventListener('blur', function() {
+                if (f.id === 'field_graduationYear' || f.id === 'field_otherEduDate') {
+                    formatGraduationField(this);
+                }
+                const val = this.value.trim();
+                if (val && !validateField(f.id, val)) {
+                    const errId = `error_${f.id.replace('field_','')}`;
+                    const errEl = document.getElementById(errId);
+                    if (errEl) errEl.style.display = 'block';
+                    this.classList.add('field-error');
+                } else {
+                    const errId = `error_${f.id.replace('field_','')}`;
+                    const errEl = document.getElementById(errId);
+                    if (errEl) errEl.style.display = 'none';
+                    this.classList.remove('field-error');
+                }
+            });
+        });
+        document.getElementById('field_targetSchool').addEventListener('input', checkStudyCityConsistency);
+        document.getElementById('field_studyCity').addEventListener('input', checkStudyCityConsistency);
+    }
+
+    // 解析函数
+    function parseGraduationYear(text) {
+        let match = text.match(/毕业时间[：:]\s*(\d{4})年(\d{1,2})月/i);
+        if (match) return match[1] + '年' + match[2] + '月';
+        match = text.match(/毕业时间[：:]\s*(\d{4})年/i);
+        if (match) return match[1] + '年';
+        match = text.match(/毕业时间[：:]\s*(\d{4})/i);
+        if (match) return match[1] + '年';
+        match = text.match(/\b(19|20)\d{2}\b/);
+        if (match) return match[0] + '年';
+        return '';
+    }
+    function parseOtherEduDate(text) {
+        let match = text.match(/其他学历获取时间[：:]\s*(\d{4})年(\d{1,2})月/i);
+        if (match) return match[1] + '年' + match[2] + '月';
+        match = text.match(/其他学历获取时间[：:]\s*(\d{4})年/i);
+        if (match) return match[1] + '年';
+        match = text.match(/其他学历获取时间[：:]\s*(\d{4})/i);
+        if (match) return match[1] + '年';
+        return '';
+    }
+    function parseOtherEdu(text) {
+        const match = text.match(/其他学历[：:]\s*([^\n\r]+)/i);
+        return match ? match[1].trim() : '';
+    }
+    function parseRawText(text) {
+        const result = {};
+        const nameMatch = text.match(/姓名[：:]\s*([^\n\r]+)/i);
+        if (nameMatch) result.name = nameMatch[1].trim();
+        const mobileMatch = text.match(/(手机|电话|号码)[：:]\s*(1[3-9]\d{9})/i) || text.match(/\b(1[3-9]\d{9})\b/);
+        if (mobileMatch) result.mobile = mobileMatch[2] || mobileMatch[1];
+        const schoolMatch = text.match(/报考院校[：:]\s*([^\n\r]+)/i) || text.match(/意向院校[：:]\s*([^\n\r]+)/i);
+        if (schoolMatch) result.targetSchool = schoolMatch[1].trim();
+        const majorMatch = text.match(/报考专业[：:]\s*([^\n\r]+)/i) || text.match(/专业[：:]\s*([^\n\r]+)/i);
+        if (majorMatch) result.targetMajor = majorMatch[1].trim();
+        const eduMatch = text.match(/最高学历[：:]\s*([^\n\r]+)/i);
+        if (eduMatch) result.highestEdu = eduMatch[1].trim();
+        const gradYear = parseGraduationYear(text);
+        if (gradYear) result.graduationYear = gradYear;
+        const emailMatch = text.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
+        if (emailMatch) result.email = emailMatch[1];
+        const addrMatch = text.match(/地址[：:]\s*([^\n\r]+)/i);
+        if (addrMatch) result.mailingAddress = addrMatch[1].trim();
+        const wechatMatch = text.match(/微信号[：:]\s*([^\n\r]+)/i) || text.match(/微信[：:]\s*([^\n\r]+)/i);
+        if (wechatMatch) result.wechat = wechatMatch[1].trim();
+        const workCityMatch = text.match(/工作[与生活]*城市[：:]\s*([^\n\r]+)/i);
+        if (workCityMatch) result.workCity = workCityMatch[1].trim();
+        const otherEduDate = parseOtherEduDate(text);
+        if (otherEduDate) result.otherEduDate = otherEduDate;
+        const otherEdu = parseOtherEdu(text);
+        if (otherEdu) result.otherEdu = otherEdu;
+        return result;
+    }
+
+    function fillForm(data) {
+        document.getElementById('field_name').value = data.name || '';
+        document.getElementById('field_mobile').value = data.mobile || '';
+        document.getElementById('field_targetSchool').value = data.targetSchool || '';
+        document.getElementById('field_targetMajor').value = data.targetMajor || '';
+        document.getElementById('field_highestEdu').value = data.highestEdu || '';
+        document.getElementById('field_graduationYear').value = data.graduationYear || '';
+        document.getElementById('field_email').value = data.email || '';
+        document.getElementById('field_mailingAddress').value = data.mailingAddress || '';
+        document.getElementById('field_wechat').value = data.wechat || '';
+        document.getElementById('field_workCity').value = data.workCity || '';
+        document.getElementById('field_otherEduDate').value = data.otherEduDate || '';
+        document.getElementById('field_otherEdu').value = data.otherEdu || '';
+    }
+
+    // 查找学员
+    async function findStudentByNameMobile(name, mobile) {
+        if (!name || !mobile) return null;
+        const result = await dbStudents.allDocs({ include_docs: true });
+        return result.rows.map(r => r.doc).find(d => d.学员姓名 === name && d.学员报名手机号 === mobile) || null;
+    }
+
+    // 从班型猜测项目类别
+    async function guessProjectCategory(className) {
+        if (!className) return '';
+        try {
+            const res = await dbProject.allDocs({ include_docs: true });
+            const projects = res.rows.map(r => r.doc);
+            for (let p of projects) {
+                const category = p.报读项目类别;
+                for (let key of ['项目1', '项目2', '项目3']) {
+                    if (p[key] && className.includes(p[key].substring(0, 10))) return category;
+                }
+            }
+            if (className.includes('单笔试')) return '单笔试';
+            if (className.includes('笔试+复试')) return '笔试+复试';
+            if (className.includes('笔面联报')) return '笔面联报';
+            if (className.includes('双考期')) return '双考期';
+            return '';
+        } catch (e) { return ''; }
+    }
+
+    // 实时联动班型 → 项目类别
+    const classNameInput = document.getElementById('field_className');
+    classNameInput.addEventListener('input', async function() {
+        const cat = await guessProjectCategory(this.value);
+        if (cat) {
+            if (['单笔试','笔试+复试','笔面联报','双考期'].includes(cat)) {
+                projectSelect.value = cat;
+                projectCustom.classList.add('hidden');
+                projectCustom.value = '';
+            } else {
+                projectSelect.value = '自定义';
+                projectCustom.classList.remove('hidden');
+                projectCustom.value = cat;
+            }
+        } else {
+            // 如果无法匹配，可以选择清空或保留原值，这里不清空，让用户手动选择
+        }
+        updateMemoPreview(); // 更新预览
+    });
+
+    // 类别与自定义显示
+    const categorySelect = document.getElementById('categorySelect');
+    const categoryCustom = document.getElementById('categoryCustom');
+    const modeSelect = document.getElementById('modeSelect');
+    const modeCustom = document.getElementById('modeCustom');
+    const projectSelect = document.getElementById('projectSelect');
+    const projectCustom = document.getElementById('projectCustom');
+
+    categorySelect.addEventListener('change', function() {
+        if (this.value === '自定义') {
+            categoryCustom.classList.remove('hidden');
+        } else {
+            categoryCustom.classList.add('hidden');
+            categoryCustom.value = '';
+        }
+        updateMemoPreview();
+    });
+    categoryCustom.addEventListener('input', updateMemoPreview);
+
+    modeSelect.addEventListener('change', function() {
+        if (this.value === '自定义') {
+            modeCustom.classList.remove('hidden');
+        } else {
+            modeCustom.classList.add('hidden');
+            modeCustom.value = '';
+        }
+        updateMemoPreview();
+    });
+    modeCustom.addEventListener('input', updateMemoPreview);
+
+    projectSelect.addEventListener('change', function() {
+        if (this.value === '自定义') {
+            projectCustom.classList.remove('hidden');
+        } else {
+            projectCustom.classList.add('hidden');
+            projectCustom.value = '';
+        }
+        updateMemoPreview();
+    });
+    projectCustom.addEventListener('input', updateMemoPreview);
+
+    // 话术下拉加载
+    async function loadPhraseSelect() {
+        const select = document.getElementById('phraseSelect');
+        select.innerHTML = '<option value="">选择记单话术</option>';
+        try {
+            const res = await dbPhrase.allDocs({ include_docs: true });
+            const phrases = res.rows.map(r => r.doc).sort((a,b) => (a.序号||0) - (b.序号||0));
+            phrases.forEach(p => {
+                if (p.快捷标签 && p.记单内容) {
+                    const opt = document.createElement('option');
+                    opt.value = p.记单内容;
+                    opt.textContent = p.快捷标签;
+                    select.appendChild(opt);
+                }
+            });
+        } catch (e) {}
+    }
+    loadPhraseSelect();
+
+    // 实时预览
+    function generateMemo() {
+        let category = categorySelect.value;
+        if (category === '自定义') category = categoryCustom.value.trim();
+        else if (category === '') category = '';
+
+        let mode = '';
+        if (modeSelect.value === '自定义') {
+            mode = modeCustom.value.trim();
+        } else {
+            mode = modeSelect.value;
+        }
+        const modeWithAt = mode ? (mode + '@') : '';
+
+        let project = '';
+        if (projectSelect.value === '自定义') {
+            project = projectCustom.value.trim();
+        } else if (projectSelect.value) {
+            project = projectSelect.value;
+        }
+
+        let fieldLines = [];
+        for (let f of FIELD_MAPPING) {
+            if (IGNORE_FIELDS.includes(f.id)) continue;
+            const input = document.getElementById(f.id);
+            let val = '';
+            if (input.tagName === 'SELECT') {
+                val = input.options[input.selectedIndex]?.value || '';
+            } else {
+                val = input.value.trim();
+            }
+            if (val !== '') {
+                fieldLines.push(`@${f.label}：${val}`);
+            }
+        }
+
+        const phraseSelect = document.getElementById('phraseSelect');
+        const phraseContent = phraseSelect.value;
+
+        let memo = '';
+        if (category) memo += category;
+        if (modeWithAt) memo += modeWithAt;
+        if (project) memo += project;
+        if (fieldLines.length) {
+            if (memo) memo += '\n';
+            memo += fieldLines.join('\n');
+        }
+        if (phraseContent) {
+            if (memo) memo += '\n';
+            memo += phraseContent;
+        }
+        return memo;
+    }
+
+    function updateMemoPreview() {
+        document.getElementById('memoPanel').value = generateMemo();
+    }
+
+    const allInputs = [
+        ...FIELD_MAPPING.map(f => document.getElementById(f.id)),
+        categorySelect, categoryCustom,
+        modeSelect, modeCustom,
+        projectSelect, projectCustom,
+        document.getElementById('phraseSelect'),
+    ].filter(el => el);
+    allInputs.forEach(el => {
+        if (el) {
+            el.addEventListener('input', updateMemoPreview);
+            el.addEventListener('change', updateMemoPreview);
+        }
+    });
+
+    // 解析按钮
+    document.getElementById('parseBtn').addEventListener('click', async () => {
+        if (!requireLogin()) return;
+        const raw = document.getElementById('rawInput').value;
+        const parsed = parseRawText(raw);
+        fillForm(parsed);
+        if (parsed.name && parsed.mobile) {
+            const exist = await findStudentByNameMobile(parsed.name, parsed.mobile);
+            if (exist) {
+                alert('检测到已有学员记录，已自动填充其全部信息');
+                document.getElementById('field_className').value = exist.所报班型 || '';
+                document.getElementById('field_domicile').value = exist.户籍所在地 || '';
+                document.getElementById('field_socialCity').value = exist.购买社保城市 || '';
+                document.getElementById('field_socialDuration').value = exist.购买社保时长 || '';
+                document.getElementById('field_targetMajor').value = exist.意向专业 || '';
+                document.getElementById('field_highestEdu').value = exist.最高学历 || '';
+                document.getElementById('field_graduationYear').value = exist.毕业年份 || '';
+                document.getElementById('field_email').value = exist.邮箱 || '';
+                document.getElementById('field_wechat').value = exist.微信号 || '';
+                document.getElementById('field_workCity').value = exist.工作生活城市 || '';
+                document.getElementById('field_mailingAddress').value = exist.邮寄地址 || '';
+                document.getElementById('field_otherMobile').value = exist.其他手机号 || '';
+                document.getElementById('field_isMobileCommon').value = exist.是否常用手机 || '';
+                document.getElementById('field_certOriginal').value = exist.毕业证原件是否在 || '';
+                document.getElementById('field_otherEdu').value = exist.其他学历 || '';
+                document.getElementById('field_otherEduDate').value = exist.其他学历获取时间 || '';
+            }
+        }
+        const className = document.getElementById('field_className').value;
+        const cat = await guessProjectCategory(className);
+        if (cat) {
+            if (['单笔试','笔试+复试','笔面联报','双考期'].includes(cat)) {
+                projectSelect.value = cat;
+                projectCustom.classList.add('hidden');
+                projectCustom.value = '';
+            } else {
+                projectSelect.value = '自定义';
+                projectCustom.classList.remove('hidden');
+                projectCustom.value = cat;
+            }
+        }
+        updateMemoPreview();
+    });
+
+    // 重置按钮
+    document.getElementById('resetBtn').addEventListener('click', () => {
+        if (!requireLogin()) return;
+        document.getElementById('rawInput').value = '';
+        FIELD_MAPPING.forEach(f => document.getElementById(f.id).value = '');
+        IGNORE_FIELDS.forEach(id => document.getElementById(id).value = '');
+        categorySelect.value = '';
+        categoryCustom.classList.add('hidden'); categoryCustom.value = '';
+        modeSelect.value = '小手机开班';
+        modeCustom.classList.add('hidden'); modeCustom.value = '';
+        projectSelect.value = '';
+        projectCustom.classList.add('hidden'); projectCustom.value = '';
+        document.getElementById('phraseSelect').value = '';
+        updateMemoPreview();
+        document.querySelectorAll('.field-error').forEach(e => e.classList.remove('field-error'));
+        document.querySelectorAll('.error-tip').forEach(e => e.style.display = 'none');
+    });
+
+    // 保存 & 录入（增加了记单类别必选检查）
+    document.getElementById('saveAndNoteBtn').addEventListener('click', async () => {
+        if (!requireLogin()) return;
+
+        // 检查记单类别是否已选择
+        let categoryChosen = false;
+        if (categorySelect.value === '自定义') {
+            if (categoryCustom.value.trim() === '') {
+                alert('请填写自定义记单类别');
+                return;
+            } else {
+                categoryChosen = true;
+            }
+        } else if (categorySelect.value && categorySelect.value !== '') {
+            categoryChosen = true;
+        }
+        if (!categoryChosen) {
+            alert('请选择记单类别（如【开班已完成】@）');
+            return;
+        }
+
+        let missing = [];
+        for (let f of FIELD_MAPPING) {
+            if (f.required) {
+                const input = document.getElementById(f.id);
+                let val = '';
+                if (input.tagName === 'SELECT') val = input.value;
+                else val = input.value.trim();
+                if (!val) missing.push(f.label);
+            }
+        }
+        if (missing.length) {
+            alert('以下必填项不能为空：' + missing.join('，'));
+            return;
+        }
+
+        let formatErrors = [];
+        for (let f of FIELD_MAPPING) {
+            const input = document.getElementById(f.id);
+            let val = input.value.trim();
+            if (val && !validateField(f.id, val)) {
+                formatErrors.push(f.label);
+            }
+        }
+        const otherDate = document.getElementById('field_otherEduDate').value.trim();
+        if (otherDate && !/^\d{4}年(\d{1,2}月)?$/.test(otherDate)) formatErrors.push('其他学历获取时间');
+        if (formatErrors.length) {
+            alert('以下字段格式不正确，请修改：' + formatErrors.join('，'));
+            return;
+        }
+
+        const name = document.getElementById('field_name').value.trim();
+        const mobile = document.getElementById('field_mobile').value.trim();
+
+        const existing = await findStudentByNameMobile(name, mobile);
+        if (existing) {
+            if (!confirm(`学员“${name}”已存在，确定覆盖信息？`)) return;
+            await dbStudents.remove(existing);
+        }
+
+        const memo = document.getElementById('memoPanel').value;
+
+        const socialCityRaw = document.getElementById('field_socialCity').value.trim();
+        const { province: socialProvince, city: socialCity } = splitSocialCity(socialCityRaw);
+
+        const newStudent = {
+            学员姓名: name,
+            学员报名手机号: mobile,
+            所报班型: document.getElementById('field_className').value,
+            户籍所在地: document.getElementById('field_domicile').value,
+            意向院校1: document.getElementById('field_targetSchool').value,
+            意向专业: document.getElementById('field_targetMajor').value,
+            最高学历: document.getElementById('field_highestEdu').value,
+            毕业年份: document.getElementById('field_graduationYear').value,
+            邮箱: document.getElementById('field_email').value,
+            微信号: document.getElementById('field_wechat').value,
+            购买社保所在省份: socialProvince,
+            购买社保城市: socialCity,
+            购买社保时长: document.getElementById('field_socialDuration').value,
+            意向学习城市: document.getElementById('field_studyCity').value,
+            其他学历: document.getElementById('field_otherEdu').value,
+            其他学历获取时间: document.getElementById('field_otherEduDate').value,
+            工作生活城市: document.getElementById('field_workCity').value,
+            邮寄地址: document.getElementById('field_mailingAddress').value,
+            其他手机号: document.getElementById('field_otherMobile').value,
+            是否常用手机: document.getElementById('field_isMobileCommon').value,
+            毕业证原件是否在: document.getElementById('field_certOriginal').value,
+            归属主体: '茶米教育',
+            考期: '2025', 班级: 5,
+            归属班主任: currentUser ? currentUser.账号 : '未知',
+            记单时间: new Date().toLocaleString(),
+            报名时间: '',
+            _id: 'stu_' + Date.now() + '_' + Math.random().toString(36).substr(2,6),
+            记单信息: memo
+        };
+
+        await dbStudents.put(newStudent);
+
+        const nowStr = new Date().toLocaleString();
+        const invoiceId = 'inv_' + Date.now() + '_' + Math.random().toString(36).substr(2,4);
+        const invoiceDoc = {
+            _id: invoiceId,
+            归属主体: '茶米教育',
+            班主任: currentUser ? currentUser.账号 : '未知',
+            姓名: name,
+            联系电话: mobile,
+            报考班型: newStudent.所报班型,
+        };
+        await dbInvoices.put(invoiceDoc).catch(e => console.warn);
+
+        const mailId = 'mail_' + Date.now() + '_' + Math.random().toString(36).substr(2,4);
+        const mailDoc = {
+            _id: mailId,
+            归属主体: '茶米教育',
+            班主任: currentUser ? currentUser.账号 : '未知',
+            学员姓名: name,
+            收件人号码: mobile,
+            收件人地址: newStudent.邮寄地址 || '',
+        };
+        await dbMailings.put(mailDoc).catch(e => console.warn);
+
+        alert('✅ 已保存学员，并生成发票/邮寄草稿！');
+    });
+
+    attachValidation();
+    updateMemoPreview();
+})();
+</script>
+</body>
+</html>

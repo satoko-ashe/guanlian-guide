@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管联报读指南 · 学员管理平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
+    <style>
+        .tab-active { background-color: #e0f2fe; border-bottom: 2px solid #0284c7; }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        .table-scroll { overflow-x: auto; }
+        .filter-checkbox { margin-right: 0.5rem; }
+        .score-warning { color: #e67e22; font-size: 0.75rem; margin-top: 0.2rem; }
+        .flow-step { display: flex; align-items: center; margin-bottom: 1rem; }
+        .flow-step-number { width: 2rem; height: 2rem; background-color: #3b82f6; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 1rem; flex-shrink: 0; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans p-4">
+
+<!-- 右上角导航 -->
+<div class="max-w-7xl mx-auto mb-2 flex justify-end space-x-3 text-sm">
+    <a href="autoNote.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-pen-fancy mr-1"></i>自动记单</a>
+    <a href="masterTable.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-table mr-1"></i>运营登记大表</a>
+    <a href="guide.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-graduation-cap mr-1"></i>管联报读指南</a>
+    <a href="guide-admin.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-lock mr-1"></i>指南后台</a>
+    <a href="admin.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-cog mr-1"></i>管理权限</a>
+</div>
+
+<!-- 登录状态条 -->
+<div class="max-w-7xl mx-auto mb-4 flex flex-wrap items-center justify-between gap-2 bg-white p-2 rounded shadow">
+    <div class="flex items-center space-x-2 text-sm">
+        <span class="text-gray-600"><i class="fas fa-database mr-1 text-blue-500"></i>本地PouchDB · 管联报读指南 (与CouchDB实时同步)</span>
+        <span id="userDisplay" class="hidden ml-2">👤 <span id="currentUserName"></span></span>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+        <button id="showLoginBtn" class="bg-blue-500 text-white px-3 py-1 rounded text-sm"><i class="fas fa-sign-in-alt mr-1"></i>登录</button>
+        <button id="logoutBtn" class="bg-gray-300 px-3 py-1 rounded text-sm hidden">退出</button>
+        <a href="guide-admin.html" target="_blank" id="adminLink" class="bg-purple-600 text-white px-3 py-1 rounded text-sm hidden"><i class="fas fa-cog mr-1"></i>指南后台</a>
+    </div>
+</div>
+
+<!-- 主卡片：四选项卡 -->
+<div class="max-w-7xl mx-auto bg-white p-4 rounded shadow">
+    <!-- 选项卡头部 -->
+    <div class="flex border-b mb-4">
+        <button class="tab-btn px-6 py-2 font-medium text-blue-600 border-b-2 border-blue-500" data-tab="form">📝 填写报考信息</button>
+        <button class="tab-btn px-6 py-2 font-medium" data-tab="history">📅 历年国家线参考</button>
+        <button class="tab-btn px-6 py-2 font-medium" data-tab="result">📊 生成个性化报读指南</button>
+        <button class="tab-btn px-6 py-2 font-medium" data-tab="policy">📜 调剂政策说明</button>
+    </div>
+
+    <!-- 选项卡1：填写报考信息 -->
+    <div id="tab-form" class="tab-pane active">
+        <div class="grid md:grid-cols-2 gap-4">
+            <!-- 左侧表单 -->
+            <div class="bg-gray-50 p-4 rounded border">
+                <h3 class="font-semibold mb-3 flex items-center"><i class="fas fa-edit text-blue-500 mr-2"></i>报考信息填写</h3>
+                <form id="applicationForm" class="space-y-3">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-sm font-medium">姓名 *</label>
+                            <input type="text" id="name" required class="w-full border rounded p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">准考证号</label>
+                            <input type="text" id="examNumber" class="w-full border rounded p-2 text-sm">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">报考院校 *</label>
+                        <input type="text" id="university" list="universityList" required class="w-full border rounded p-2 text-sm">
+                        <datalist id="universityList"></datalist>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-sm font-medium">报考专业 *</label>
+                            <select id="major" required class="w-full border rounded p-2 text-sm">
+                                <option value="">请选择</option>
+                                <option value="MBA">工商管理 MBA</option>
+                                <option value="MPA">公共管理 MPA</option>
+                                <option value="MPAcc">会计 MPAcc</option>
+                                <option value="MEM">工程管理 MEM</option>
+                                <option value="MTA">旅游管理 MTA</option>
+                                <option value="MLIS">图书情报 MLIS</option>
+                                <option value="MAud">审计 MAud</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">专业代码</label>
+                            <select id="majorCode" class="w-full border rounded p-2 text-sm">
+                                <option value="125100">125100 (MBA)</option>
+                                <option value="125200">125200 (MPA)</option>
+                                <option value="125300">125300 (MPAcc)</option>
+                                <option value="125600">125600 (MEM)</option>
+                                <option value="125601">125601 (工程管理)</option>
+                                <option value="125602">125602 (项目管理)</option>
+                                <option value="125603">125603 (工业工程)</option>
+                                <option value="125604">125604 (物流工程)</option>
+                                <option value="125400">125400 (MTA)</option>
+                                <option value="125500">125500 (MLIS)</option>
+                                <option value="125700">125700 (MAud)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">学习形式 *</label>
+                        <div class="flex gap-4 mt-1">
+                            <label class="inline-flex items-center"><input type="radio" name="studyMode" value="全日制" checked> <span class="ml-1">全日制</span></label>
+                            <label class="inline-flex items-center"><input type="radio" name="studyMode" value="非全日制"> <span class="ml-1">非全日制</span></label>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-sm font-medium">意向省份 *</label>
+                            <select id="province" required class="w-full border rounded p-2 text-sm">
+                                <option value="">请选择</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">意向城市 (选填)</label>
+                            <input type="text" id="city" placeholder="如：成都市" class="w-full border rounded p-2 text-sm">
+                        </div>
+                    </div>
+                    <!-- 分数输入：卷面总分、英语、管综 + 加分项（全部必填） -->
+                    <div class="grid grid-cols-4 gap-2">
+                        <div>
+                            <label class="block text-sm font-medium">卷面总分 *</label>
+                            <input type="number" id="totalScore" min="0" max="300" step="1" value="160" required class="w-full border rounded p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">英语单科 *</label>
+                            <input type="number" id="englishScore" min="0" max="100" step="1" value="40" required class="w-full border rounded p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">管综单科 *</label>
+                            <input type="number" id="comprehensiveScore" min="0" max="200" step="1" value="120" required class="w-full border rounded p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">加分项</label>
+                            <select id="bonusScore" class="w-full border rounded p-2 text-sm">
+                                <option value="0">0分</option>
+                                <option value="10">10分</option>
+                                <option value="15">15分</option>
+                                <option value="20">20分</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="scoreWarning" class="score-warning hidden">⚠️ 总分应与英语+管综之和相等，请检查</div>
+                    <p class="text-xs text-gray-500">加分仅计入总分，单科线仍以卷面分为准。</p>
+                    <div>
+                        <label class="block text-sm font-medium">考试时间 *</label>
+                        <input type="month" id="examDate" value="2025-12" required class="w-full border rounded p-2 text-sm">
+                    </div>
+                    <div class="flex gap-2 pt-2">
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"><i class="fas fa-chart-line mr-1"></i>生成指南</button>
+                        <button type="button" onclick="resetForm()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm"><i class="fas fa-undo mr-1"></i>重置</button>
+                    </div>
+                </form>
+            </div>
+            <!-- 右侧提示区域（三卡片布局） -->
+            <div class="space-y-4">
+                <!-- 卡片1：填写提示 -->
+                <div class="bg-blue-50 p-4 rounded border border-blue-200">
+                    <h4 class="font-medium text-blue-800 mb-2"><i class="fas fa-lightbulb mr-1"></i>填写提示</h4>
+                    <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+                        <li>所有分数均为必填，加分项可选</li>
+                        <li>系统会自动校验总分=英语+管综</li>
+                        <li>登录后可查看院校详细招生信息及录取分析</li>
+                    </ul>
+                </div>
+
+                <!-- 卡片2：动态国家线参考（带年份下拉） -->
+                <div class="bg-white p-4 rounded border border-gray-200 shadow-sm">
+                    <div class="flex justify-between items-center mb-2">
+                        <h4 class="font-medium text-gray-800"><i class="fas fa-chart-line text-blue-500 mr-1"></i>国家线参考</h4>
+                        <select id="yearSelect" class="border rounded p-1 text-sm">
+                            <!-- 动态填充年份 -->
+                        </select>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-gray-100">
+                                <tr><th class="p-2 text-left">专业</th><th class="p-2 text-left">A区</th><th class="p-2 text-left">B区</th></tr>
+                            </thead>
+                            <tbody id="dynamicNationalLineBody">
+                                <!-- 动态填充 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 卡片3：AB区省份列表（两行两列表格） -->
+                <div class="bg-white p-4 rounded border border-gray-200 shadow-sm">
+                    <h4 class="font-medium text-gray-800 mb-2"><i class="fas fa-map-marked-alt text-green-500 mr-1"></i>A/B区省份划分</h4>
+                    <table class="min-w-full text-xs border">
+                        <tr><td class="border p-2 align-top"><span class="font-semibold">A区（21）</span></td><td class="border p-2">北京、天津、河北、山西、辽宁、吉林、黑龙江、上海、江苏、浙江、安徽、福建、江西、山东、河南、湖北、湖南、广东、重庆、四川、陕西</td></tr>
+                        <tr><td class="border p-2 align-top"><span class="font-semibold">B区（10）</span></td><td class="border p-2">内蒙古、广西、海南、贵州、云南、西藏、甘肃、青海、宁夏、新疆</td></tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 选项卡2：历年国家线参考（完整版） -->
+    <div id="tab-history" class="tab-pane">
+        <h3 class="font-semibold mb-3"><i class="fas fa-calendar-alt mr-2"></i>管理类联考历年国家线（总分/英语/管综）</h3>
+        <div class="table-scroll">
+            <table class="min-w-full border text-sm">
+                <thead class="bg-gray-100">
+                    <tr><th class="border p-2">年份</th><th class="border p-2">专业</th><th class="border p-2">A区线</th><th class="border p-2">B区线</th></tr>
+                </thead>
+                <tbody id="nationalLineTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 选项卡3：生成个性化报读指南 -->
+    <div id="tab-result" class="tab-pane">
+        <!-- 筛选条件栏（服从调剂放在录取率后面） -->
+        <div class="mb-4 p-3 bg-gray-50 rounded flex flex-wrap items-center gap-4">
+            <span class="font-medium text-sm">推荐优先级：</span>
+            <label class="inline-flex items-center text-sm"><input type="checkbox" id="filterDistance" class="filter-checkbox"> 距离近</label>
+            <label class="inline-flex items-center text-sm"><input type="checkbox" id="filterCheap" class="filter-checkbox"> 学费便宜</label>
+            <label class="inline-flex items-center text-sm"><input type="checkbox" id="filter985" class="filter-checkbox"> 985/211名校</label>
+            <label class="inline-flex items-center text-sm"><input type="checkbox" id="filterHighRate" class="filter-checkbox"> 录取率较高</label>
+            <label class="inline-flex items-center text-sm"><input type="checkbox" id="allowTransfer" class="filter-checkbox"> 服从调剂（可换专业/学习形式）</label>
+            <button id="applyFilterBtn" class="bg-blue-500 text-white px-3 py-1 rounded text-sm ml-auto">重新排序</button>
+        </div>
+
+        <div id="initialPrompt" class="text-center py-10">
+            <i class="fas fa-search fa-4x text-gray-300 mb-3"></i>
+            <h4 class="text-lg text-gray-500">请先在“填写报考信息”选项卡提交表单</h4>
+        </div>
+        <div id="resultContent" style="display: none;"></div>
+    </div>
+
+    <!-- 选项卡4：调剂政策说明 -->
+    <div id="tab-policy" class="tab-pane">
+        <div class="bg-blue-50 p-4 rounded border border-blue-200 mb-4">
+            <h3 class="font-semibold text-lg mb-2"><i class="fas fa-gavel text-blue-600 mr-2"></i>教育部2025年管理类联考调剂政策</h3>
+            <p class="text-sm text-gray-700">管理类联考包含以下七个专业，仅允许在<span class="font-bold">本专业内部</span>进行调剂，禁止跨出此范围：</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                <div class="bg-white p-2 rounded shadow text-center text-sm">📊 MBA<br>125100</div>
+                <div class="bg-white p-2 rounded shadow text-center text-sm">🏛️ MPA<br>125200</div>
+                <div class="bg-white p-2 rounded shadow text-center text-sm">📝 MPAcc<br>125300</div>
+                <div class="bg-white p-2 rounded shadow text-center text-sm">✈️ MTA<br>125400</div>
+                <div class="bg-white p-2 rounded shadow text-center text-sm">📚 MLIS<br>125500</div>
+                <div class="bg-white p-2 rounded shadow text-center text-sm">⚙️ MEM<br>125601</div>
+                <div class="bg-white p-2 rounded shadow text-center text-sm">💰 MAud<br>025700</div>
+            </div>
+        </div>
+
+        <!-- 双过线核心规则流程图 -->
+        <div class="bg-white p-4 rounded border border-gray-200 shadow-sm mb-4">
+            <h4 class="font-semibold mb-3"><i class="fas fa-random text-purple-500 mr-2"></i>“双过线”调剂核心规则</h4>
+            <div class="flow-step">
+                <div class="flow-step-number">1</div>
+                <div><span class="font-bold">总分过线</span>：初试总分需达到<span class="font-semibold">调出专业</span>和<span class="font-semibold">调入专业</span>在<span class="font-semibold">目标调剂地区</span>（A区或B区）的国家线中的<span class="text-red-600 font-bold">较高者</span>。</div>
+            </div>
+            <div class="flow-step">
+                <div class="flow-step-number">2</div>
+                <div><span class="font-bold">单科过线</span>：政治、英语等单科成绩均需达到目标地区调入专业的国家线要求。</div>
+            </div>
+            <div class="mt-4 bg-yellow-50 p-3 rounded text-sm">
+                <p class="font-semibold">📌 举例说明：</p>
+                <p>• 会计专硕（MPAcc）A区线194分，工商管理（MBA）A区线162分。若会计考生总分180，欲调剂MBA：<br>
+                需同时满足：会计过B区线？MBA过A区线？取较高者 → 会计A区194 > MBA A区162，但考生只有180，不满足194，故不可调剂至A区MBA；若调剂B区，会计B区184，MBA B区141，较高者为184，考生180仍不够，故不可调剂。</p>
+                <p>• 若MBA考生总分200，欲调剂会计：需同时满足MBA过A区162，会计过A区194，较高者为194，考生200>194，且单科满足会计要求，则可调剂。</p>
+                <p class="mt-2">✅ <span class="font-bold">低分专业往高分专业调剂更容易</span>（分数高即可）；<span class="font-bold">高分专业往低分专业调剂反而更难</span>（因为要同时满足高分专业的线）。</p>
+            </div>
+        </div>
+
+        <!-- 其他限制 -->
+        <div class="grid md:grid-cols-2 gap-4">
+            <div class="bg-white p-4 rounded border border-gray-200 shadow-sm">
+                <h4 class="font-semibold mb-2"><i class="fas fa-clock text-orange-500 mr-2"></i>工作年限要求</h4>
+                <ul class="list-disc list-inside text-sm space-y-1">
+                    <li><span class="font-bold">专科毕业满5年、本科毕业满3年、硕士毕业满2年</span>的考生，可在全部七个专业间自由调剂。</li>
+                    <li>不满足上述年限者，仅限在<span class="font-bold">会计、审计、图书情报</span>及<span class="font-bold">工程管理的工业工程与物流工程方向</span>之间调剂。</li>
+                </ul>
+                <p class="text-xs text-gray-500 mt-2">系统暂无法自动判断工作年限，请自行核对。</p>
+            </div>
+            <div class="bg-white p-4 rounded border border-gray-200 shadow-sm">
+                <h4 class="font-semibold mb-2"><i class="fas fa-university text-green-500 mr-2"></i>学习方式限制</h4>
+                <ul class="list-disc list-inside text-sm space-y-1">
+                    <li><span class="font-bold text-red-600">非全日制专业不能调剂至全日制专业</span>，但全日制考生可调剂至非全日制。</li>
+                    <li>调剂须通过“全国硕士生招生复试调剂服务系统”，可填报3个平行志愿。</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 志愿填报提示 -->
+        <div class="mt-4 bg-gray-100 p-3 rounded text-sm">
+            <i class="fas fa-info-circle text-blue-500 mr-1"></i> 以上政策依据教育部《2025年全国硕士研究生招生工作管理规定》，是当年调剂的唯一权威依据。系统推荐已严格遵守上述规则。
+        </div>
+    </div>
+</div>
+
+<!-- 登录模态框 -->
+<div id="loginModal" class="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center hidden">
+    <div class="bg-white p-6 rounded shadow-lg w-96">
+        <h3 class="text-lg font-bold mb-4">登录 (员工表，需启用账号)</h3>
+        <input id="loginUser" type="text" placeholder="账号" class="w-full border p-2 mb-2 rounded" value="管理员">
+        <input id="loginPass" type="password" placeholder="密码" class="w-full border p-2 mb-4 rounded" value="2026">
+        <div class="flex justify-end space-x-2">
+            <button id="closeLoginModal" class="px-4 py-2 bg-gray-300 rounded">取消</button>
+            <button id="loginBtn" class="px-4 py-2 bg-blue-600 text-white rounded">登录</button>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">管理员密码2026，普通员工密码2025</p>
+    </div>
+</div>
+
+<!-- 院校详情模态框 -->
+<div id="universityModal" class="fixed inset-0 bg-black bg-opacity-30 items-center justify-center hidden">
+    <div class="bg-white p-6 rounded shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+        <h3 id="uniModalTitle" class="text-lg font-bold mb-4"></h3>
+        <div id="uniModalContent"></div>
+        <div class="flex justify-end mt-4"><button onclick="closeUniModal()" class="px-4 py-2 bg-gray-300 rounded">关闭</button></div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // ---------- CouchDB 配置 ----------
+    const COUCHDB_URL = 'http://satoko:1793364876@localhost:5984'; // 用户提供的实际地址
+
+    // ---------- 数据库工厂 ----------
+    const createDB = (name) => {
+        const localDB = new PouchDB(name);
+        if (COUCHDB_URL) {
+            const remoteDB = new PouchDB(`${COUCHDB_URL}/${name}`);
+            localDB.sync(remoteDB, { live: true, retry: true })
+                .on('error', console.warn);
+        }
+        return localDB;
+    };
+
+    const dbEmployees = createDB('employees');
+    const dbUniversities = createDB('universities');
+    const dbApplications = createDB('applications');
+    const dbAdmission = createDB('admission_analysis');
+
+    // ---------- 国家线数据 ----------
+    const nationalLines = {
+        "2025": { "MBA": { A: "151/35/70", B: "141/32/67" }, "MPA": { A: "164/38/76", B: "154/35/73" }, "MPAcc": { A: "194/48/96", B: "184/45/93" }, "MEM": { A: "162/38/67", B: "152/35/64" }, "MTA": { A: "151/35/70", B: "141/32/67" }, "MLIS": { A: "191/48/96", B: "181/45/93" }, "MAud": { A: "201/52/104", B: "191/49/101" } },
+        "2024": { "MBA": { A: "162/39/78", B: "152/36/75" }, "MPA": { A: "173/43/86", B: "163/40/83" }, "MPAcc": { A: "201/52/104", B: "191/49/101" }, "MEM": { A: "176/43/86", B: "166/40/83" }, "MTA": { A: "162/39/78", B: "152/36/75" }, "MLIS": { A: "198/51/102", B: "188/48/99" }, "MAud": { A: "197/51/102", B: "187/48/99" } },
+        "2023": { "MBA": { A: "167/41/82", B: "157/36/72" }, "MPA": { A: "175/44/88", B: "165/39/78" }, "MPAcc": { A: "197/51/102", B: "187/46/92" }, "MEM": { A: "178/44/88", B: "168/39/78" }, "MTA": { A: "160/36/72", B: "150/31/62" }, "MLIS": { A: "198/52/104", B: "188/47/94" }, "MAud": { A: "200/51/102", B: "190/46/92" } }
+    };
+
+    // ---------- 省份分区数据 ----------
+    const regionProvinces = {
+        "东北地区": ["黑龙江", "吉林", "辽宁"],
+        "华中地区": ["河南", "湖北", "湖南"],
+        "华南地区": ["广东", "广西", "海南"],
+        "西南地区": ["重庆", "四川", "贵州", "云南", "西藏"],
+        "西北地区": ["陕西", "甘肃", "青海", "宁夏", "新疆"],
+        "华东地区": ["上海", "山东", "安徽", "浙江", "福建", "江西", "江苏"],
+        "华北地区": ["北京", "天津", "山西", "河北", "内蒙古"]
+    };
+    const aProvinces = ["北京","天津","河北","山西","辽宁","吉林","黑龙江","上海","江苏","浙江","安徽","福建","江西","山东","河南","湖北","湖南","广东","重庆","四川","陕西"];
+    const bProvinces = ["内蒙古","广西","海南","贵州","云南","西藏","甘肃","青海","宁夏","新疆"];
+
+    // ---------- 院校库数据 ----------
+    const universitiesData = [
+        { id:1, name:"北京大学", province:"北京", city:"北京", major:"MBA", schoolType:"985、211、双一流", tuitionFull:18.8, tuitionPart:42.8, enrollFull:30, enrollPart:770, scoreLine:151, customScore:151, recommendation:"名校" },
+        { id:2, name:"北方工业大学", province:"北京", city:"北京", major:"MBA", schoolType:"普通高校", tuitionFull:6.8, tuitionPart:8.8, enrollFull:50, enrollPart:57, scoreLine:151, customScore:151, recommendation:"学费低" },
+        { id:3, name:"成都大学", province:"四川", city:"成都", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:6, enrollFull:null, enrollPart:38, scoreLine:160, customScore:160, recommendation:"本地" },
+        { id:4, name:"重庆大学", province:"重庆", city:"重庆", major:"MBA", schoolType:"985、211、双一流", tuitionFull:null, tuitionPart:15.6, enrollFull:null, enrollPart:335, scoreLine:151, customScore:151, recommendation:"985" },
+        { id:5, name:"东华大学", province:"上海", city:"上海市", major:"MBA", schoolType:"211、双一流", tuitionFull:21.8, tuitionPart:25.8, enrollFull:80, enrollPart:80, scoreLine:151, customScore:151, recommendation:"211" },
+        { id:6, name:"济南大学", province:"山东", city:"济南", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:8.4, enrollFull:null, enrollPart:44, scoreLine:151, customScore:151, recommendation:"学费低" },
+        { id:7, name:"海军工程大学", province:"湖北", city:"武汉", major:"MEM", schoolType:"全国重点大学", tuitionFull:null, tuitionPart:null, enrollFull:10, enrollPart:19, scoreLine:0, customScore:0, recommendation:"军队院校" },
+        { id:8, name:"长沙理工大学", province:"湖南", city:"长沙", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:10.5, enrollFull:null, enrollPart:105, scoreLine:151, customScore:151, recommendation:"学费适中" },
+        { id:9, name:"空军工程大学", province:"陕西", city:"西安", major:"MEM", schoolType:"高等军事院校", tuitionFull:null, tuitionPart:null, enrollFull:5, enrollPart:12, scoreLine:0, customScore:0, recommendation:"军队院校" },
+        { id:10, name:"河北工业大学", province:"天津", city:"天津", major:"MBA", schoolType:"211、双一流", tuitionFull:6, tuitionPart:8, enrollFull:138, enrollPart:204, scoreLine:151, customScore:151, recommendation:"211" },
+        { id:11, name:"安徽财经大学", province:"安徽", city:"蚌埠", major:"MBA", schoolType:"普通高校", tuitionFull:5, tuitionPart:8, enrollFull:58, enrollPart:95, scoreLine:151, customScore:151, recommendation:"学费低" },
+        { id:12, name:"山西财经大学", province:"山西", city:"太原", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:5.8, enrollFull:null, enrollPart:199, scoreLine:161, customScore:161, recommendation:"学费低" },
+        { id:13, name:"东北林业大学", province:"黑龙江", city:"哈尔滨", major:"MBA", schoolType:"211、双一流", tuitionFull:null, tuitionPart:8.7, enrollFull:null, enrollPart:30, scoreLine:151, customScore:151, recommendation:"211" },
+        { id:14, name:"河南财经政法大学", province:"河南", city:"郑州", major:"MBA", schoolType:"普通高校", tuitionFull:8.75, tuitionPart:8.75, enrollFull:116, enrollPart:70, scoreLine:151, customScore:151, recommendation:"学费适中" },
+        { id:15, name:"昆明理工大学", province:"云南", city:"昆明", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:8, enrollFull:null, enrollPart:318, scoreLine:141, customScore:141, recommendation:"B区" },
+        { id:16, name:"贵州财经大学", province:"贵州", city:"贵阳", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:6, enrollFull:null, enrollPart:34, scoreLine:147, customScore:147, recommendation:"B区" },
+        { id:17, name:"浙江师范大学", province:"浙江", city:"金华", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:8.5, enrollFull:null, enrollPart:110, scoreLine:157, customScore:157, recommendation:"学费适中" },
+        { id:18, name:"福建理工大学", province:"福建", city:"福州", major:"MPA", schoolType:"普通高校", tuitionFull:2.4, tuitionPart:4.8, enrollFull:10, enrollPart:10, scoreLine:164, customScore:164, recommendation:"学费低" },
+        { id:19, name:"东华理工大学", province:"江西", city:"南昌", major:"MBA", schoolType:"普通高校", tuitionFull:3.6, tuitionPart:3.6, enrollFull:28, enrollPart:28, scoreLine:151, customScore:151, recommendation:"学费低" },
+        { id:20, name:"甘肃农业大学", province:"甘肃", city:"兰州", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:4.5, enrollFull:null, enrollPart:118, scoreLine:141, customScore:141, recommendation:"B区" },
+        { id:21, name:"北方民族大学", province:"宁夏", city:"银川", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:3.6, enrollFull:null, enrollPart:5, scoreLine:141, customScore:141, recommendation:"B区" }
+    ];
+
+    // ---------- 录取分析数据 ----------
+    const admissionData = [
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"250-260", applicantCount:1, admittedCount:1, admissionRate:1 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"240-249", applicantCount:3, admittedCount:3, admissionRate:1 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"230-239", applicantCount:7, admittedCount:7, admissionRate:1 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"220-229", applicantCount:16, admittedCount:16, admissionRate:1 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"210-219", applicantCount:40, admittedCount:36, admissionRate:0.9 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"200-209", applicantCount:44, admittedCount:41, admissionRate:0.9318 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"190-199", applicantCount:68, admittedCount:65, admissionRate:0.9559 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"180-189", applicantCount:80, admittedCount:78, admissionRate:0.975 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"170-179", applicantCount:104, admittedCount:99, admissionRate:0.9519 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"160-169", applicantCount:92, admittedCount:86, admissionRate:0.9348 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"151-159", applicantCount:68, admittedCount:65, admissionRate:0.9559 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"220-229", applicantCount:9, admittedCount:9, admissionRate:1 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"210-219", applicantCount:16, admittedCount:16, admissionRate:1 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"200-209", applicantCount:39, admittedCount:39, admissionRate:1 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"190-199", applicantCount:59, admittedCount:58, admissionRate:0.98 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"180-189", applicantCount:93, admittedCount:87, admissionRate:0.94 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"170-179", applicantCount:113, admittedCount:64, admissionRate:0.57 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"163-169", applicantCount:116, admittedCount:27, admissionRate:0.23 }
+    ];
+
+    // 初始化数据库（如果为空）
+    async function initDB() {
+        const uniRes = await dbUniversities.allDocs({ limit: 1 });
+        if (uniRes.rows.length === 0) {
+            for (let u of universitiesData) {
+                await dbUniversities.put({ ...u, _id: 'uni_' + u.id });
+            }
+        }
+        const admRes = await dbAdmission.allDocs({ limit: 1 });
+        if (admRes.rows.length === 0) {
+            for (let a of admissionData) {
+                await dbAdmission.put({ ...a, _id: 'adm_' + Date.now() + Math.random() });
+            }
+        }
+    }
+    initDB();
+
+    // ---------- 登录状态管理 ----------
+    const ADMIN_ACCOUNT = '管理员';
+    const ADMIN_PASSWORD = '2026';
+
+    let currentUser = JSON.parse(sessionStorage.getItem('currentUser')) || null;
+    const userDisplay = document.getElementById('userDisplay');
+    const currentUserName = document.getElementById('currentUserName');
+    const showLoginBtn = document.getElementById('showLoginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const adminLink = document.getElementById('adminLink');
+    const loginModal = document.getElementById('loginModal');
+
+    function updateLoginUI() {
+        if (currentUser) {
+            userDisplay.classList.remove('hidden');
+            currentUserName.innerText = currentUser.账号 || '';
+            showLoginBtn.classList.add('hidden');
+            logoutBtn.classList.remove('hidden');
+            if (currentUser.账号 === ADMIN_ACCOUNT) adminLink.classList.remove('hidden');
+            else adminLink.classList.add('hidden');
+        } else {
+            userDisplay.classList.add('hidden');
+            showLoginBtn.classList.remove('hidden');
+            logoutBtn.classList.add('hidden');
+            adminLink.classList.add('hidden');
+        }
+    }
+    updateLoginUI();
+
+    function requireLogin() {
+        if (!currentUser) { alert('请先登录'); loginModal.classList.remove('hidden'); return false; }
+        return true;
+    }
+
+    document.getElementById('showLoginBtn').addEventListener('click', () => loginModal.classList.remove('hidden'));
+    document.getElementById('closeLoginModal').addEventListener('click', () => loginModal.classList.add('hidden'));
+    document.getElementById('loginBtn').addEventListener('click', () => {
+        const acc = document.getElementById('loginUser').value;
+        const pwd = document.getElementById('loginPass').value;
+
+        // 管理员硬编码
+        if (acc === ADMIN_ACCOUNT && pwd === ADMIN_PASSWORD) {
+            currentUser = { 账号: ADMIN_ACCOUNT, 是否启用该账号: '是' };
+            sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+            updateLoginUI();
+            loginModal.classList.add('hidden');
+            return;
+        }
+
+        // 普通员工
+        dbEmployees.allDocs({ include_docs: true }).then(res => {
+            const users = res.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design'));
+            const found = users.find(u => u.账号 === acc && u.密码 === pwd && u.是否启用该账号 === '是');
+            if (found) {
+                currentUser = found;
+                sessionStorage.setItem('currentUser', JSON.stringify(found));
+                updateLoginUI();
+                loginModal.classList.add('hidden');
+            } else alert('登录失败');
+        });
+    });
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        currentUser = null; sessionStorage.removeItem('currentUser'); updateLoginUI();
+    });
+
+    // 选项卡切换
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            tabBtns.forEach(b => b.classList.remove('text-blue-600', 'border-b-2', 'border-blue-500'));
+            btn.classList.add('text-blue-600', 'border-b-2', 'border-blue-500');
+            tabPanes.forEach(p => p.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+        });
+    });
+
+    // 填充省份
+    const provinceSelect = document.getElementById('province');
+    const allProvinces = [...new Set(Object.values(regionProvinces).flat())].sort();
+    allProvinces.forEach(prov => {
+        let opt = document.createElement('option');
+        opt.value = prov; opt.textContent = prov;
+        provinceSelect.appendChild(opt);
+    });
+
+    // 院校下拉列表填充
+    async function fillUniversityDatalist() {
+        const datalist = document.getElementById('universityList');
+        const all = await dbUniversities.allDocs({ include_docs: true });
+        const unis = all.rows.map(r => r.doc);
+        [...new Set(unis.map(u => u.name))].forEach(name => {
+            let opt = document.createElement('option');
+            opt.value = name;
+            datalist.appendChild(opt);
+        });
+    }
+    fillUniversityDatalist();
+
+    // 专业代码联动
+    document.getElementById('major').addEventListener('change', function() {
+        const major = this.value;
+        const codeMap = { 'MBA':'125100','MPA':'125200','MPAcc':'125300','MEM':'125600','MTA':'125400','MLIS':'125500','MAud':'125700' };
+        if (codeMap[major]) {
+            const select = document.getElementById('majorCode');
+            for (let opt of select.options) {
+                if (opt.value.startsWith(codeMap[major].substring(0,4))) {
+                    opt.selected = true; break;
+                }
+            }
+        }
+    });
+
+    // 历年国家线表格（完整）
+    function renderNationalLines() {
+        const tbody = document.getElementById('nationalLineTableBody');
+        let html = '';
+        const years = Object.keys(nationalLines).sort((a,b) => b.localeCompare(a));
+        const majorsOrder = ['MBA','MPA','MPAcc','MEM','MTA','MLIS','MAud'];
+        years.forEach(year => {
+            const yearData = nationalLines[year];
+            majorsOrder.forEach(major => {
+                if (yearData[major]) {
+                    html += `<tr><td class="border p-2">${year}</td><td class="border p-2">${major}</td><td class="border p-2">${yearData[major].A}</td><td class="border p-2">${yearData[major].B}</td></tr>`;
+                }
+            });
+        });
+        tbody.innerHTML = html;
+    }
+    renderNationalLines();
+
+    // 动态国家线卡片（年份下拉）
+    const yearSelect = document.getElementById('yearSelect');
+    const dynamicBody = document.getElementById('dynamicNationalLineBody');
+    const years = Object.keys(nationalLines).sort((a,b) => b.localeCompare(a));
+    years.forEach(year => {
+        let opt = document.createElement('option');
+        opt.value = year;
+        opt.textContent = year + '年';
+        yearSelect.appendChild(opt);
+    });
+    yearSelect.value = '2025';
+    function updateDynamicNationalLine() {
+        const year = yearSelect.value;
+        const yearData = nationalLines[year];
+        if (!yearData) return;
+        const majors = ['MBA','MPA','MPAcc','MEM'];
+        let html = '';
+        majors.forEach(major => {
+            if (yearData[major]) {
+                html += `<tr><td class="p-2">${major}</td><td class="p-2">${yearData[major].A}</td><td class="p-2">${yearData[major].B}</td></tr>`;
+            }
+        });
+        dynamicBody.innerHTML = html;
+    }
+    yearSelect.addEventListener('change', updateDynamicNationalLine);
+    updateDynamicNationalLine();
+
+    // 分数校验
+    const totalScoreInput = document.getElementById('totalScore');
+    const englishInput = document.getElementById('englishScore');
+    const comprehensiveInput = document.getElementById('comprehensiveScore');
+    const scoreWarning = document.getElementById('scoreWarning');
+    function validateScore() {
+        const total = parseInt(totalScoreInput.value) || 0;
+        const eng = parseInt(englishInput.value) || 0;
+        const comp = parseInt(comprehensiveInput.value) || 0;
+        if (total !== eng + comp) {
+            scoreWarning.classList.remove('hidden');
+        } else {
+            scoreWarning.classList.add('hidden');
+        }
+    }
+    totalScoreInput.addEventListener('input', validateScore);
+    englishInput.addEventListener('input', validateScore);
+    comprehensiveInput.addEventListener('input', validateScore);
+
+    // 解析分数线字符串
+    function parseScoreLine(line) {
+        const parts = line.split('/');
+        return { total: parseInt(parts[0])||0, english: parseInt(parts[1])||0, comprehensive: parseInt(parts[2])||0 };
+    }
+
+    // 判断某专业在某区域是否过线（返回过线总分和单科条件）
+    function getNationalLine(major, region) {
+        const yearData = nationalLines['2025'];
+        if (!yearData[major]) return null;
+        const line = region === 'A' ? yearData[major].A : yearData[major].B;
+        return parseScoreLine(line);
+    }
+
+    // 判断是否满足双过线（调出专业、调入专业、目标区域）
+    function meetsDualLine(originalMajor, targetMajor, targetRegion, total, english, comprehensive) {
+        const lineOriginal = getNationalLine(originalMajor, targetRegion);
+        const lineTarget = getNationalLine(targetMajor, targetRegion);
+        if (!lineOriginal || !lineTarget) return false;
+        const requiredTotal = Math.max(lineOriginal.total, lineTarget.total);
+        const requiredEnglish = lineTarget.english; // 单科按调入专业
+        const requiredComprehensive = lineTarget.comprehensive;
+        return total >= requiredTotal && english >= requiredEnglish && comprehensive >= requiredComprehensive;
+    }
+
+    // 检查院校是否招收指定学习形式
+    function hasEnrollment(uni, studyMode) {
+        if (studyMode === '全日制') {
+            return uni.enrollFull && uni.enrollFull > 0;
+        } else {
+            return uni.enrollPart && uni.enrollPart > 0;
+        }
+    }
+
+    // 生成所有可能的推荐项（严格遵循双过线）
+    function generateAllCandidates(formData, filters, allowTransfer) {
+        const { province, totalWithBonus, english, comprehensive, major: originalMajor, studyMode: originalMode } = formData;
+        const candidates = [];
+
+        // 判断原专业是否过B区线（最低要求）
+        const lineOriginalB = getNationalLine(originalMajor, 'B');
+        if (!lineOriginalB || totalWithBonus < lineOriginalB.total || english < lineOriginalB.english || comprehensive < lineOriginalB.comprehensive) {
+            return []; // 未过B区，无任何推荐
+        }
+
+        const allUnis = universitiesData;
+
+        // 正常报考：原专业 + 原学习形式
+        allUnis.filter(u => u.major === originalMajor).forEach(uni => {
+            const regionType = aProvinces.includes(uni.province) ? 'A' : 'B';
+            // 必须满足原专业在该区域过线
+            const line = getNationalLine(originalMajor, regionType);
+            if (!line || totalWithBonus < line.total || english < line.english || comprehensive < line.comprehensive) return;
+            const tuition = originalMode === '全日制' ? uni.tuitionFull : uni.tuitionPart;
+            if (tuition === null) return; // 该院校此学习形式不招生
+            candidates.push({
+                ...uni,
+                recommendedMajor: originalMajor,
+                recommendedMode: originalMode,
+                tuition: tuition,
+                hasEnroll: hasEnrollment(uni, originalMode),
+                baseScore: 1000,
+                type: '正常报考'
+            });
+        });
+
+        if (!allowTransfer) return candidates;
+
+        // 同专业调剂：原专业 + 另一种学习形式（需遵守学习方式限制）
+        const otherMode = originalMode === '全日制' ? '非全日制' : '全日制';
+        // 非全日制不能调全日制，所以如果原为非全日制，不能考虑全日制
+        if (originalMode === '非全日制' && otherMode === '全日制') {
+            // 不允许非全调全日制，跳过
+        } else {
+            allUnis.filter(u => u.major === originalMajor).forEach(uni => {
+                const regionType = aProvinces.includes(uni.province) ? 'A' : 'B';
+                const line = getNationalLine(originalMajor, regionType);
+                if (!line || totalWithBonus < line.total || english < line.english || comprehensive < line.comprehensive) return;
+                const tuition = otherMode === '全日制' ? uni.tuitionFull : uni.tuitionPart;
+                if (tuition === null) return;
+                candidates.push({
+                    ...uni,
+                    recommendedMajor: originalMajor,
+                    recommendedMode: otherMode,
+                    tuition: tuition,
+                    hasEnroll: hasEnrollment(uni, otherMode),
+                    baseScore: 800,
+                    type: '同专业调剂'
+                });
+            });
+        }
+
+        // 跨专业调剂：遍历其他专业
+        const otherMajors = Object.keys(nationalLines['2025']).filter(m => m !== originalMajor);
+        otherMajors.forEach(targetMajor => {
+            allUnis.filter(u => u.major === targetMajor).forEach(uni => {
+                const regionType = aProvinces.includes(uni.province) ? 'A' : 'B';
+                // 必须满足双过线
+                if (!meetsDualLine(originalMajor, targetMajor, regionType, totalWithBonus, english, comprehensive)) return;
+                // 两种学习形式都考虑，但要遵守学习方式限制
+                ['全日制', '非全日制'].forEach(mode => {
+                    // 非全不能调全日制
+                    if (originalMode === '非全日制' && mode === '全日制') return;
+                    const tuition = mode === '全日制' ? uni.tuitionFull : uni.tuitionPart;
+                    if (tuition === null) return;
+                    candidates.push({
+                        ...uni,
+                        recommendedMajor: targetMajor,
+                        recommendedMode: mode,
+                        tuition: tuition,
+                        hasEnroll: hasEnrollment(uni, mode),
+                        baseScore: 600,
+                        type: `跨专业调剂 (${originalMajor}→${targetMajor})`
+                    });
+                });
+            });
+        });
+
+        return candidates;
+    }
+
+    // 计算院校录取率综合分
+    function getUniversityAdmissionScore(uni, targetMajor) {
+        let score = 0;
+        const totalEnroll = (uni.enrollFull || 0) + (uni.enrollPart || 0);
+        if (totalEnroll > 100) score += 80;
+        else if (totalEnroll > 50) score += 50;
+        else if (totalEnroll > 20) score += 30;
+        const relevant = admissionData.filter(a => a.university === uni.name && a.major === targetMajor);
+        if (relevant.length > 0) {
+            const avgRate = relevant.reduce((sum, a) => sum + a.admissionRate, 0) / relevant.length;
+            score += avgRate * 200;
+        } else {
+            score += 100;
+        }
+        return score;
+    }
+
+    // 计算综合得分并排序
+    function sortCandidates(candidates, formData, filters) {
+        const { province, totalWithBonus } = formData;
+        const userRegion = getRegionByProvince(province);
+        return candidates.map(c => {
+            let score = c.baseScore || 0;
+            const uniScore = c.customScore || c.scoreLine;
+            if (totalWithBonus >= uniScore) score += 500; // 过院校线
+
+            if (filters.distance) {
+                if (c.province === province) score += 300;
+                else if (getRegionByProvince(c.province) === userRegion) score += 150;
+            }
+            if (filters.cheap) {
+                if (c.tuition) {
+                    if (c.tuition <= 5) score += 200;
+                    else if (c.tuition <= 10) score += 100;
+                    else if (c.tuition <= 20) score += 50;
+                }
+            }
+            if (filters.nineTwo) {
+                if (c.schoolType.includes('985')) score += 250;
+                else if (c.schoolType.includes('211')) score += 150;
+                else if (c.schoolType.includes('双一流')) score += 80;
+            }
+            if (filters.highRate) {
+                const rateScore = getUniversityAdmissionScore(c, c.recommendedMajor);
+                score += rateScore;
+            }
+            return { ...c, score };
+        }).sort((a,b) => b.score - a.score);
+    }
+
+    // 获取区域
+    function getRegionByProvince(prov) {
+        for (let region in regionProvinces) {
+            if (regionProvinces[region].includes(prov)) return region;
+        }
+        return '';
+    }
+
+    // 生成指南
+    let lastFormData = null;
+    let lastCandidates = [];
+
+    document.getElementById('applicationForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const total = parseInt(totalScoreInput.value) || 0;
+        const eng = parseInt(englishInput.value) || 0;
+        const comp = parseInt(comprehensiveInput.value) || 0;
+        if (total !== eng + comp) {
+            if (!confirm('卷面总分与英语+管综之和不相等，是否仍继续？')) {
+                return;
+            }
+        }
+
+        const formData = {
+            name: document.getElementById('name').value,
+            examNumber: document.getElementById('examNumber').value,
+            university: document.getElementById('university').value,
+            major: document.getElementById('major').value,
+            majorCode: document.getElementById('majorCode').value,
+            studyMode: document.querySelector('input[name="studyMode"]:checked').value,
+            province: document.getElementById('province').value,
+            city: document.getElementById('city').value,
+            totalScore: total,
+            englishScore: eng,
+            comprehensiveScore: comp,
+            bonusScore: parseInt(document.getElementById('bonusScore').value) || 0,
+            examDate: document.getElementById('examDate').value
+        };
+        if (!formData.name || !formData.university || !formData.major || !formData.province) {
+            alert('请填写必填项'); return;
+        }
+
+        const totalWithBonus = formData.totalScore + formData.bonusScore;
+
+        // 获取国家线判断
+        const examYear = formData.examDate.split('-')[0];
+        const yearData = nationalLines[examYear] || nationalLines['2025'];
+        const majorLine = yearData[formData.major];
+        let lineA = null, lineB = null;
+        if (majorLine) {
+            lineA = parseScoreLine(majorLine.A);
+            lineB = parseScoreLine(majorLine.B);
+        }
+
+        // 判断过线情况
+        const passedA = lineA ? (totalWithBonus >= lineA.total && formData.englishScore >= lineA.english && formData.comprehensiveScore >= lineA.comprehensive) : false;
+        const passedB = lineB ? (totalWithBonus >= lineB.total && formData.englishScore >= lineB.english && formData.comprehensiveScore >= lineB.comprehensive) : false;
+        let status = '';
+        if (passedA) {
+            status = '达到A区线（可报A/B区）';
+        } else if (passedB) {
+            status = '未达到A区线，但达到B区线，可考虑B区院校或跨专业调剂';
+        } else {
+            status = '未达到国家线，建议考虑自考/成考/留学等途径';
+        }
+
+        lastFormData = { ...formData, totalWithBonus, lineA, lineB, status, passedA, passedB };
+
+        // 切换到结果选项卡
+        tabBtns.forEach(b => b.classList.remove('text-blue-600', 'border-b-2', 'border-blue-500'));
+        tabBtns[2].classList.add('text-blue-600', 'border-b-2', 'border-blue-500');
+        tabPanes.forEach(p => p.classList.remove('active'));
+        document.getElementById('tab-result').classList.add('active');
+
+        applyFiltersAndRender();
+    });
+
+    function applyFiltersAndRender() {
+        if (!lastFormData) return;
+
+        const filterDistance = document.getElementById('filterDistance').checked;
+        const filterCheap = document.getElementById('filterCheap').checked;
+        const filter985 = document.getElementById('filter985').checked;
+        const filterHighRate = document.getElementById('filterHighRate').checked;
+        const allowTransfer = document.getElementById('allowTransfer').checked;
+        const filters = { distance: filterDistance, cheap: filterCheap, nineTwo: filter985, highRate: filterHighRate };
+
+        let candidates = [];
+        if (lastFormData.passedA || lastFormData.passedB) {
+            candidates = generateAllCandidates(lastFormData, filters, allowTransfer);
+        }
+
+        const sorted = sortCandidates(candidates, lastFormData, filters);
+        const top10 = sorted.slice(0, 10);
+
+        const totalWithBonus = lastFormData.totalWithBonus;
+        const targetIndex = sorted.findIndex(u => u.name === lastFormData.university && u.recommendedMajor === lastFormData.major && u.recommendedMode === lastFormData.studyMode);
+        let statusHtml = '';
+        if (lastFormData.passedA || lastFormData.passedB) {
+            if (targetIndex === 0) {
+                statusHtml = `<div class="alert alert-success p-3 rounded bg-green-100"><i class="fas fa-crown text-yellow-500"></i> 天选之子！您的报考院校是推荐首选！</div>`;
+            } else if (targetIndex > 0 && targetIndex < 5) {
+                statusHtml = `<div class="alert alert-info p-3 rounded bg-blue-100"><i class="fas fa-shield-alt"></i> 稳中求胜！您的报考院校排名第${targetIndex+1}，还有更优选择。</div>`;
+            } else if (targetIndex === -1 && top10.length > 0) {
+                statusHtml = `<div class="alert alert-warning p-3 rounded bg-yellow-100"><i class="fas fa-rocket"></i> 您值得更好！您的报考院校未进入前10推荐。</div>`;
+            }
+        }
+
+        let html = `<div class="space-y-4">`;
+        html += `<div class="bg-blue-50 p-4 rounded border"><h4 class="font-medium">📌 ${lastFormData.name} 的分析报告</h4>`;
+        html += `<p class="text-sm">报考院校：${lastFormData.university} | 专业：${lastFormData.major} | 意向省份：${lastFormData.province}</p>`;
+        html += `<p class="text-sm">卷面总分：${lastFormData.totalScore} + 加分 ${lastFormData.bonusScore} = 有效总分 ${totalWithBonus} | 英语：${lastFormData.englishScore} | 管综：${lastFormData.comprehensiveScore}</p>`;
+        if (lastFormData.lineA && lastFormData.lineB) {
+            html += `<p class="text-sm">国家线要求：总分${lastFormData.lineA.total} 英语${lastFormData.lineA.english} 管综${lastFormData.lineA.comprehensive} (A区) / 总分${lastFormData.lineB.total} 英语${lastFormData.lineB.english} 管综${lastFormData.lineB.comprehensive} (B区)</p>`;
+        }
+        html += `<p class="text-sm font-semibold ${lastFormData.status.includes('未达到') ? 'text-red-600' : 'text-green-600'}">状态：${lastFormData.status}</p>`;
+        html += `</div>`;
+
+        html += statusHtml || '';
+
+        if (top10.length > 0) {
+            html += `<h5 class="font-semibold mt-4">🏆 推荐院校 (前10)</h5>`;
+            html += `<div class="table-scroll"><table class="min-w-full border text-sm"><thead class="bg-gray-100"><tr><th>排名</th><th>院校</th><th>推荐专业</th><th>学习形式</th><th>所属区</th><th>学费(万)</th><th>分数线</th><th>招生状态</th><th>调剂类型</th><th>操作</th></tr></thead><tbody>`;
+            top10.forEach((item, idx) => {
+                const regionType = aProvinces.includes(item.province) ? 'A区' : 'B区';
+                const enrollStatus = item.hasEnroll ? '✅ 招生' : '❌ 不招生';
+                const statusClass = item.hasEnroll ? '' : 'text-red-500';
+                html += `<tr><td class="border p-2">${idx+1}</td><td class="border p-2">${item.name}</td><td class="border p-2">${item.recommendedMajor}</td><td class="border p-2">${item.recommendedMode}</td><td class="border p-2">${regionType}</td><td class="border p-2">${item.tuition || 'N/A'}</td><td class="border p-2">${item.customScore || item.scoreLine}</td><td class="border p-2 ${statusClass}">${enrollStatus}</td><td class="border p-2">${item.type}</td><td class="border p-2"><button onclick="showUniversityDetail(${item.id})" class="text-blue-600 underline">详情</button></td></tr>`;
+            });
+            html += `</tbody></table></div>`;
+            if (lastFormData.studyMode === '全日制' && !top10.some(u => u.recommendedMode === '全日制' && u.hasEnroll)) {
+                html += `<div class="bg-yellow-100 p-3 rounded mt-2">⚠️ 您选择的全日制专业暂无合适招生，可考虑非全日制或勾选服从调剂。</div>`;
+            }
+        } else {
+            html += `<div class="bg-yellow-100 p-4 rounded">暂无匹配院校，建议调整专业或地区，或勾选服从调剂扩大范围。</div>`;
+            if (!lastFormData.passedA && !lastFormData.passedB) {
+                html += `<div class="bg-gray-100 p-4 rounded mt-2">💡 您的分数未过国家线，可考虑：自考、成考、国际研究生等途径。</div>`;
+            }
+        }
+
+        if (!currentUser) {
+            html += `<div class="bg-yellow-100 p-3 rounded mt-3 flex justify-between items-center"><span>🔒 登录后可查看完整招生信息</span><button onclick="document.getElementById('showLoginBtn').click()" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">登录</button></div>`;
+        }
+        html += `</div>`;
+
+        document.getElementById('initialPrompt').style.display = 'none';
+        document.getElementById('resultContent').style.display = 'block';
+        document.getElementById('resultContent').innerHTML = html;
+
+        if (currentUser) {
+            const appDoc = {
+                _id: 'app_' + Date.now(),
+                姓名: lastFormData.name,
+                准考证号: lastFormData.examNumber,
+                报考院校: lastFormData.university,
+                报考专业: lastFormData.major,
+                专业代码: lastFormData.majorCode,
+                学习形式: lastFormData.studyMode,
+                意向省份: lastFormData.province,
+                意向城市: lastFormData.city,
+                卷面总分: lastFormData.totalScore,
+                英语单科: lastFormData.englishScore,
+                管综单科: lastFormData.comprehensiveScore,
+                加分: lastFormData.bonusScore,
+                有效总分: totalWithBonus,
+                考试时间: lastFormData.examDate,
+                推荐状态: lastFormData.status,
+                提交时间: new Date().toLocaleString(),
+                用户: currentUser.账号
+            };
+            dbApplications.put(appDoc).catch(e=>console.warn);
+        }
+    }
+
+    document.getElementById('applyFilterBtn').addEventListener('click', applyFiltersAndRender);
+
+    window.showUniversityDetail = async function(id) {
+        if (!requireLogin()) return;
+        const doc = await dbUniversities.get('uni_' + id);
+        const modal = document.getElementById('universityModal');
+        document.getElementById('uniModalTitle').innerText = doc.name;
+        const fullEnroll = doc.enrollFull ? `全日制招生：${doc.enrollFull}人` : '全日制不招生';
+        const partEnroll = doc.enrollPart ? `非全日制招生：${doc.enrollPart}人` : '非全日制不招生';
+        document.getElementById('uniModalContent').innerHTML = `
+            <p><strong>专业：</strong>${doc.major}</p>
+            <p><strong>省份：</strong>${doc.province}</p>
+            <p><strong>城市：</strong>${doc.city}</p>
+            <p><strong>学校类型：</strong>${doc.schoolType}</p>
+            <p><strong>全日制学费：</strong>${doc.tuitionFull || '无'} 万元</p>
+            <p><strong>非全日制学费：</strong>${doc.tuitionPart || '无'} 万元</p>
+            <p><strong>招生人数：</strong>${fullEnroll}，${partEnroll}</p>
+            <p><strong>分数线：</strong>${doc.customScore || doc.scoreLine}</p>
+            <p><strong>录取率参考：</strong>${(getUniversityAdmissionScore(doc, doc.major) / 2).toFixed(1)}% (综合)</p>
+        `;
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+    };
+    window.closeUniModal = function() {
+        document.getElementById('universityModal').classList.add('hidden');
+    };
+    window.resetForm = function() {
+        document.getElementById('applicationForm').reset();
+        document.getElementById('totalScore').value = 160;
+        document.getElementById('englishScore').value = 35;
+        document.getElementById('comprehensiveScore').value = 70;
+        document.getElementById('examDate').value = '2025-12';
+        scoreWarning.classList.add('hidden');
+    };
+})();
+</script>
+</body>
+</html>

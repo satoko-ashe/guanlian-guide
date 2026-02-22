@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>指南后台 · 学员管理平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <style>
+        .table-scroll { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 0.375rem; }
+        .table-scroll table { border-collapse: collapse; width: max-content; min-width: 100%; }
+        .table-scroll th { background: #f7fafc; border: 1px solid #cbd5e0; padding: 0.5rem; font-size: 0.75rem; }
+        .table-scroll td { border: 1px solid #cbd5e0; padding: 0.5rem; font-size: 0.75rem; white-space: nowrap; }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000; }
+        .modal-content { background: white; padding: 1.5rem; border-radius: 0.5rem; width: 90%; max-width: 900px; max-height: 80vh; overflow-y: auto; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans p-4">
+
+<!-- 导航栏 -->
+<div class="max-w-7xl mx-auto mb-2 flex justify-end space-x-3 text-sm">
+    <a href="autoNote.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-pen-fancy mr-1"></i>自动记单</a>
+    <a href="masterTable.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-table mr-1"></i>运营登记大表</a>
+    <a href="guide.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-graduation-cap mr-1"></i>管联报读指南</a>
+    <a href="guide-admin.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-lock mr-1"></i>指南后台</a>
+    <a href="admin.html" target="_blank" class="bg-white px-3 py-1 rounded shadow hover:bg-gray-100"><i class="fas fa-cog mr-1"></i>管理权限</a>
+</div>
+
+<!-- 登录状态条 -->
+<div class="max-w-7xl mx-auto mb-4 flex flex-wrap items-center justify-between gap-2 bg-white p-2 rounded shadow">
+    <div class="flex items-center space-x-2 text-sm">
+        <span class="text-gray-600"><i class="fas fa-database mr-1 text-blue-500"></i>指南后台管理 (与CouchDB实时同步)</span>
+        <span id="userDisplay" class="hidden ml-2">👤 <span id="currentUserName"></span></span>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+        <button id="showLoginBtn" class="bg-blue-500 text-white px-3 py-1 rounded text-sm"><i class="fas fa-sign-in-alt mr-1"></i>登录</button>
+        <button id="logoutBtn" class="bg-gray-300 px-3 py-1 rounded text-sm hidden">退出</button>
+    </div>
+</div>
+
+<!-- 主内容：后台选项卡 -->
+<div class="max-w-7xl mx-auto bg-white p-4 rounded shadow">
+    <div class="flex border-b mb-4 flex-wrap">
+        <button class="tab-btn px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-500" data-tab="applications">📋 报考意向表</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="universities">🏛 全国院校库</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="analysis">📊 录取分析数据</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="regions">🗺 地理分区表</button>
+        <button class="tab-btn px-4 py-2 font-medium" data-tab="settings">⚙️ 系统设置</button>
+    </div>
+
+    <!-- 报考意向表 (包含全部字段) -->
+    <div id="tab-applications" class="tab-pane active">
+        <div class="flex justify-between mb-2">
+            <span class="text-sm">共 <span id="appCount">0</span> 条</span>
+            <button onclick="exportTable('applications')" class="bg-green-100 hover:bg-green-200 px-3 py-1 rounded text-sm"><i class="fas fa-download mr-1"></i>导出Excel</button>
+        </div>
+        <div id="appTableContainer" class="table-scroll"></div>
+    </div>
+
+    <!-- 全国院校库 (严格按照Excel) -->
+    <div id="tab-universities" class="tab-pane">
+        <div class="flex justify-between mb-2">
+            <span class="text-sm">共 <span id="uniCount">0</span> 条</span>
+            <div>
+                <button onclick="addUniversity()" class="bg-indigo-100 hover:bg-indigo-200 px-3 py-1 rounded text-sm"><i class="fas fa-plus mr-1"></i>新增院校</button>
+                <button onclick="exportTable('universities')" class="bg-green-100 hover:bg-green-200 px-3 py-1 rounded text-sm"><i class="fas fa-download mr-1"></i>导出</button>
+            </div>
+        </div>
+        <div id="uniTableContainer" class="table-scroll"></div>
+    </div>
+
+    <!-- 录取分析数据 (严格按照Excel) -->
+    <div id="tab-analysis" class="tab-pane">
+        <div class="flex justify-between mb-2">
+            <span class="text-sm">共 <span id="analysisCount">0</span> 条</span>
+            <button onclick="addAnalysis()" class="bg-indigo-100 hover:bg-indigo-200 px-3 py-1 rounded text-sm"><i class="fas fa-plus mr-1"></i>新增记录</button>
+            <button onclick="exportTable('analysis')" class="bg-green-100 hover:bg-green-200 px-3 py-1 rounded text-sm"><i class="fas fa-download mr-1"></i>导出</button>
+        </div>
+        <div id="analysisTableContainer" class="table-scroll"></div>
+    </div>
+
+    <!-- 地理分区表 (省份) -->
+    <div id="tab-regions" class="tab-pane">
+        <div class="flex justify-between mb-2">
+            <span class="text-sm">地理分区数据</span>
+        </div>
+        <div id="regionTableContainer" class="table-scroll"></div>
+    </div>
+
+    <!-- 系统设置 -->
+    <div id="tab-settings" class="tab-pane">
+        <p class="text-sm text-gray-600">系统设置：可扩展同步、备份等功能。当前数据全部存储在本地IndexedDB，并与CouchDB实时同步。</p>
+        <div class="mt-4 p-4 bg-gray-50 rounded">
+            <h4 class="font-medium">员工账号管理</h4>
+            <p class="text-xs">管理员账号：管理员 / 2026（不可在此修改，请在“管理权限”页面操作）</p>
+        </div>
+    </div>
+</div>
+
+<!-- 登录模态框 -->
+<div id="loginModal" class="modal hidden">
+    <div class="modal-content max-w-md">
+        <h3 class="text-lg font-bold mb-4">登录 (员工表，需启用账号)</h3>
+        <input id="loginUser" type="text" placeholder="账号" class="w-full border p-2 mb-2 rounded" value="管理员">
+        <input id="loginPass" type="password" placeholder="密码" class="w-full border p-2 mb-4 rounded" value="2026">
+        <div class="flex justify-end space-x-2">
+            <button id="closeLoginModal" class="px-4 py-2 bg-gray-300 rounded">取消</button>
+            <button id="loginBtn" class="px-4 py-2 bg-blue-600 text-white rounded">登录</button>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑模态框 (简单) -->
+<div id="editModal" class="modal hidden">
+    <div class="modal-content">
+        <h3 class="text-lg font-bold mb-4" id="modalTitle">编辑数据</h3>
+        <div id="modalFields" class="grid grid-cols-2 gap-3 text-sm"></div>
+        <div class="flex justify-end space-x-2 mt-4">
+            <button onclick="closeEditModal()" class="px-4 py-2 bg-gray-300 rounded">取消</button>
+            <button id="saveModalBtn" class="px-4 py-2 bg-blue-600 text-white rounded">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // ---------- CouchDB 配置 ----------
+    const COUCHDB_URL = 'http://satoko:1793364876@localhost:5984'; // 用户提供的实际地址
+
+    // ---------- 数据库工厂 ----------
+    const createDB = (name) => {
+        const localDB = new PouchDB(name);
+        if (COUCHDB_URL) {
+            const remoteDB = new PouchDB(`${COUCHDB_URL}/${name}`);
+            localDB.sync(remoteDB, { live: true, retry: true })
+                .on('error', console.warn);
+        }
+        return localDB;
+    };
+
+    // ---------- 数据库 ----------
+    const dbEmployees = createDB('employees');
+    const dbApplications = createDB('applications');
+    const dbUniversities = createDB('universities');
+    const dbAdmission = createDB('admission_analysis');
+
+    // 从guide.js复用的数据 (省份分区、院校、录取分析)
+    const regionProvinces = {
+        "东北地区": ["黑龙江", "吉林", "辽宁"],
+        "华中地区": ["河南", "湖北", "湖南"],
+        "华南地区": ["广东", "广西", "海南"],
+        "西南地区": ["重庆", "四川", "贵州", "云南", "西藏"],
+        "西北地区": ["陕西", "甘肃", "青海", "宁夏", "新疆"],
+        "华东地区": ["上海", "山东", "安徽", "浙江", "福建", "江西", "江苏"],
+        "华北地区": ["北京", "天津", "山西", "河北", "内蒙古"]
+    };
+
+    const universitiesData = [
+        { id:1, name:"北京大学", province:"北京", city:"北京", major:"MBA", schoolType:"985、211、双一流", tuitionFull:18.8, tuitionPart:42.8, enrollFull:30, enrollPart:770, scoreLine:151, customScore:151, recommendation:"名校" },
+        { id:2, name:"北方工业大学", province:"北京", city:"北京", major:"MBA", schoolType:"普通高校", tuitionFull:6.8, tuitionPart:8.8, enrollFull:50, enrollPart:57, scoreLine:151, customScore:151, recommendation:"学费低" },
+        { id:3, name:"成都大学", province:"四川", city:"成都", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:6, enrollFull:null, enrollPart:38, scoreLine:160, customScore:160, recommendation:"本地" },
+        { id:4, name:"重庆大学", province:"重庆", city:"重庆", major:"MBA", schoolType:"985、211、双一流", tuitionFull:null, tuitionPart:15.6, enrollFull:null, enrollPart:335, scoreLine:151, customScore:151, recommendation:"985" },
+        { id:5, name:"东华大学", province:"上海", city:"上海市", major:"MBA", schoolType:"211、双一流", tuitionFull:21.8, tuitionPart:25.8, enrollFull:80, enrollPart:80, scoreLine:151, customScore:151, recommendation:"211" },
+        { id:6, name:"济南大学", province:"山东", city:"济南", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:8.4, enrollFull:null, enrollPart:44, scoreLine:151, customScore:151, recommendation:"学费低" },
+        { id:7, name:"海军工程大学", province:"湖北", city:"武汉", major:"MEM", schoolType:"全国重点大学", tuitionFull:null, tuitionPart:null, enrollFull:10, enrollPart:19, scoreLine:0, customScore:0, recommendation:"军队院校" },
+        { id:8, name:"长沙理工大学", province:"湖南", city:"长沙", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:10.5, enrollFull:null, enrollPart:105, scoreLine:151, customScore:151, recommendation:"学费适中" },
+        { id:9, name:"空军工程大学", province:"陕西", city:"西安", major:"MEM", schoolType:"高等军事院校", tuitionFull:null, tuitionPart:null, enrollFull:5, enrollPart:12, scoreLine:0, customScore:0, recommendation:"军队院校" },
+        { id:10, name:"河北工业大学", province:"天津", city:"天津", major:"MBA", schoolType:"211、双一流", tuitionFull:6, tuitionPart:8, enrollFull:138, enrollPart:204, scoreLine:151, customScore:151, recommendation:"211" },
+        { id:11, name:"安徽财经大学", province:"安徽", city:"蚌埠", major:"MBA", schoolType:"普通高校", tuitionFull:5, tuitionPart:8, enrollFull:58, enrollPart:95, scoreLine:151, customScore:151, recommendation:"学费低" },
+        { id:12, name:"山西财经大学", province:"山西", city:"太原", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:5.8, enrollFull:null, enrollPart:199, scoreLine:161, customScore:161, recommendation:"学费低" },
+        { id:13, name:"东北林业大学", province:"黑龙江", city:"哈尔滨", major:"MBA", schoolType:"211、双一流", tuitionFull:null, tuitionPart:8.7, enrollFull:null, enrollPart:30, scoreLine:151, customScore:151, recommendation:"211" },
+        { id:14, name:"河南财经政法大学", province:"河南", city:"郑州", major:"MBA", schoolType:"普通高校", tuitionFull:8.75, tuitionPart:8.75, enrollFull:116, enrollPart:70, scoreLine:151, customScore:151, recommendation:"学费适中" },
+        { id:15, name:"昆明理工大学", province:"云南", city:"昆明", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:8, enrollFull:null, enrollPart:318, scoreLine:141, customScore:141, recommendation:"B区" },
+        { id:16, name:"贵州财经大学", province:"贵州", city:"贵阳", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:6, enrollFull:null, enrollPart:34, scoreLine:147, customScore:147, recommendation:"B区" },
+        { id:17, name:"浙江师范大学", province:"浙江", city:"金华", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:8.5, enrollFull:null, enrollPart:110, scoreLine:157, customScore:157, recommendation:"学费适中" },
+        { id:18, name:"福建理工大学", province:"福建", city:"福州", major:"MPA", schoolType:"普通高校", tuitionFull:2.4, tuitionPart:4.8, enrollFull:10, enrollPart:10, scoreLine:164, customScore:164, recommendation:"学费低" },
+        { id:19, name:"东华理工大学", province:"江西", city:"南昌", major:"MBA", schoolType:"普通高校", tuitionFull:3.6, tuitionPart:3.6, enrollFull:28, enrollPart:28, scoreLine:151, customScore:151, recommendation:"学费低" },
+        { id:20, name:"甘肃农业大学", province:"甘肃", city:"兰州", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:4.5, enrollFull:null, enrollPart:118, scoreLine:141, customScore:141, recommendation:"B区" },
+        { id:21, name:"北方民族大学", province:"宁夏", city:"银川", major:"MBA", schoolType:"普通高校", tuitionFull:null, tuitionPart:3.6, enrollFull:null, enrollPart:5, scoreLine:141, customScore:141, recommendation:"B区" }
+    ];
+
+    const admissionData = [
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"250-260", applicantCount:1, admittedCount:1, admissionRate:1 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"240-249", applicantCount:3, admittedCount:3, admissionRate:1 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"230-239", applicantCount:7, admittedCount:7, admissionRate:1 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"220-229", applicantCount:16, admittedCount:16, admissionRate:1 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"210-219", applicantCount:40, admittedCount:36, admissionRate:0.9 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"200-209", applicantCount:44, admittedCount:41, admissionRate:0.9318 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"190-199", applicantCount:68, admittedCount:65, admissionRate:0.9559 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"180-189", applicantCount:80, admittedCount:78, admissionRate:0.975 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"170-179", applicantCount:104, admittedCount:99, admissionRate:0.9519 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"160-169", applicantCount:92, admittedCount:86, admissionRate:0.9348 },
+        { year:"2025", university:"四川大学", region:"A区", major:"MBA", nationalScore:151, universityScore:151, studyMode:"非全日制", scoreRange:"151-159", applicantCount:68, admittedCount:65, admissionRate:0.9559 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"220-229", applicantCount:9, admittedCount:9, admissionRate:1 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"210-219", applicantCount:16, admittedCount:16, admissionRate:1 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"200-209", applicantCount:39, admittedCount:39, admissionRate:1 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"190-199", applicantCount:59, admittedCount:58, admissionRate:0.98 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"180-189", applicantCount:93, admittedCount:87, admissionRate:0.94 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"170-179", applicantCount:113, admittedCount:64, admissionRate:0.57 },
+        { year:"2025", university:"贵州大学", region:"B区", major:"MBA", nationalScore:141, universityScore:163, studyMode:"非全日制", scoreRange:"163-169", applicantCount:116, admittedCount:27, admissionRate:0.23 }
+    ];
+
+    // 初始化数据库
+    async function initDB() {
+        const uniRes = await dbUniversities.allDocs({ limit: 1 });
+        if (uniRes.rows.length === 0) {
+            for (let u of universitiesData) {
+                await dbUniversities.put({ ...u, _id: 'uni_' + u.id });
+            }
+        }
+        const admRes = await dbAdmission.allDocs({ limit: 1 });
+        if (admRes.rows.length === 0) {
+            for (let a of admissionData) {
+                await dbAdmission.put({ ...a, _id: 'adm_' + Date.now() + Math.random() });
+            }
+        }
+    }
+    initDB();
+
+    // ---------- 登录状态 ----------
+    const ADMIN_ACCOUNT = '管理员';
+    const ADMIN_PASSWORD = '2026';
+
+    let currentUser = JSON.parse(sessionStorage.getItem('currentUser')) || null;
+    const userDisplay = document.getElementById('userDisplay');
+    const currentUserName = document.getElementById('currentUserName');
+    const showLoginBtn = document.getElementById('showLoginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loginModal = document.getElementById('loginModal');
+
+    function updateLoginUI() {
+        if (currentUser) {
+            userDisplay.classList.remove('hidden');
+            currentUserName.innerText = currentUser.账号 || '';
+            showLoginBtn.classList.add('hidden');
+            logoutBtn.classList.remove('hidden');
+            if (currentUser.账号 !== ADMIN_ACCOUNT) {
+                alert('只有管理员可以访问后台');
+                window.location.href = 'guide.html';
+            }
+        } else {
+            userDisplay.classList.add('hidden');
+            showLoginBtn.classList.remove('hidden');
+            logoutBtn.classList.add('hidden');
+        }
+    }
+    updateLoginUI();
+
+    function requireAdmin() {
+        if (!currentUser || currentUser.账号 !== ADMIN_ACCOUNT) {
+            alert('请用管理员账号登录');
+            loginModal.classList.remove('hidden');
+            return false;
+        }
+        return true;
+    }
+
+    document.getElementById('showLoginBtn').addEventListener('click', () => loginModal.classList.remove('hidden'));
+    document.getElementById('closeLoginModal').addEventListener('click', () => loginModal.classList.add('hidden'));
+    document.getElementById('loginBtn').addEventListener('click', () => {
+        const acc = document.getElementById('loginUser').value;
+        const pwd = document.getElementById('loginPass').value;
+
+        // 管理员硬编码
+        if (acc === ADMIN_ACCOUNT && pwd === ADMIN_PASSWORD) {
+            currentUser = { 账号: ADMIN_ACCOUNT, 是否启用该账号: '是' };
+            sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+            updateLoginUI();
+            loginModal.classList.add('hidden');
+            renderCurrentTab();
+            return;
+        }
+
+        // 普通员工
+        dbEmployees.allDocs({ include_docs: true }).then(res => {
+            const users = res.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design'));
+            const found = users.find(u => u.账号 === acc && u.密码 === pwd && u.是否启用该账号 === '是');
+            if (found) {
+                currentUser = found;
+                sessionStorage.setItem('currentUser', JSON.stringify(found));
+                updateLoginUI();
+                loginModal.classList.add('hidden');
+                renderCurrentTab();
+            } else alert('登录失败');
+        });
+    });
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        currentUser = null; sessionStorage.removeItem('currentUser'); updateLoginUI(); window.location.href = 'guide.html';
+    });
+
+    // 选项卡切换
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+    let currentTab = 'applications';
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            tabBtns.forEach(b => b.classList.remove('text-blue-600', 'border-b-2', 'border-blue-500'));
+            btn.classList.add('text-blue-600', 'border-b-2', 'border-blue-500');
+            tabPanes.forEach(p => p.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            currentTab = tab;
+            renderCurrentTab();
+        });
+    });
+
+    function renderCurrentTab() {
+        if (!requireAdmin()) return;
+        if (currentTab === 'applications') renderApplications();
+        else if (currentTab === 'universities') renderUniversities();
+        else if (currentTab === 'analysis') renderAnalysis();
+        else if (currentTab === 'regions') renderRegions();
+    }
+
+    // 报考意向表 (完整字段)
+    async function renderApplications() {
+        const all = await dbApplications.allDocs({ include_docs: true });
+        const rows = all.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design'));
+        document.getElementById('appCount').innerText = rows.length;
+        let html = '<table><thead><tr><th>姓名</th><th>准考证号</th><th>报考院校</th><th>专业</th><th>学习形式</th><th>意向省份</th><th>意向城市</th><th>卷面总分</th><th>英语</th><th>管综</th><th>加分</th><th>有效总分</th><th>考试时间</th><th>推荐状态</th><th>提交时间</th><th>操作</th></tr></thead><tbody>';
+        rows.forEach(doc => {
+            html += `<tr><td>${doc.姓名||''}</td><td>${doc.准考证号||''}</td><td>${doc.报考院校||''}</td><td>${doc.报考专业||''}</td><td>${doc.学习形式||''}</td><td>${doc.意向省份||''}</td><td>${doc.意向城市||''}</td><td>${doc.卷面总分||''}</td><td>${doc.英语单科||''}</td><td>${doc.管综单科||''}</td><td>${doc.加分||''}</td><td>${doc.有效总分||''}</td><td>${doc.考试时间||''}</td><td>${doc.推荐状态||''}</td><td>${doc.提交时间||''}</td><td><button onclick="deleteDoc('applications','${doc._id}')" class="text-red-600">删除</button></td></tr>`;
+        });
+        html += '</tbody></table>';
+        document.getElementById('appTableContainer').innerHTML = html;
+    }
+
+    // 院校库 (严格按照Excel字段)
+    async function renderUniversities() {
+        const all = await dbUniversities.allDocs({ include_docs: true });
+        const rows = all.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design'));
+        document.getElementById('uniCount').innerText = rows.length;
+        let html = '<table><thead><tr><th>地理分区</th><th>省份</th><th>培养地点</th><th>专业</th><th>院校</th><th>二级学院</th><th>学校性质</th><th>提前批面试</th><th>报考条件</th><th>特殊要求</th><th>全日制学制</th><th>非全日制学制</th><th>全日制学费</th><th>非全日制学费</th><th>全日制招生</th><th>非全日制招生</th><th>上课时间</th><th>上课地点</th><th>培养方向</th><th>25复试分数线</th><th>管联招生简章</th><th>总硕士简章</th><th>专业目录</th><th>提面链接</th><th>操作</th></tr></thead><tbody>';
+        // 为了简化显示，只展示部分关键字段，实际可扩展
+        rows.forEach(doc => {
+            html += `<tr><td>${doc.geoRegion||''}</td><td>${doc.province||''}</td><td>${doc.city||''}</td><td>${doc.major||''}</td><td>${doc.name||''}</td><td>${doc.college||''}</td><td>${doc.schoolType||''}</td><td>${doc.interview||''}</td><td>${doc.requirements||''}</td><td>${doc.special||''}</td><td>${doc.durationFull||''}</td><td>${doc.durationPart||''}</td><td>${doc.tuitionFull||''}</td><td>${doc.tuitionPart||''}</td><td>${doc.enrollFull||''}</td><td>${doc.enrollPart||''}</td><td>${doc.classTime||''}</td><td>${doc.classLocation||''}</td><td>${doc.directions||''}</td><td>${doc.scoreLine||''}</td><td>${doc.linkMBA||''}</td><td>${doc.linkMaster||''}</td><td>${doc.linkDir||''}</td><td>${doc.linkInterview||''}</td><td><button onclick="editUniversity('${doc._id}')" class="text-blue-600 mr-2">编辑</button><button onclick="deleteDoc('universities','${doc._id}')" class="text-red-600">删除</button></td></tr>`;
+        });
+        html += '</tbody></table>';
+        document.getElementById('uniTableContainer').innerHTML = html;
+    }
+
+    // 录取分析数据
+    async function renderAnalysis() {
+        const all = await dbAdmission.allDocs({ include_docs: true });
+        const rows = all.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design'));
+        document.getElementById('analysisCount').innerText = rows.length;
+        let html = '<table><thead><tr><th>年份</th><th>院校</th><th>院区</th><th>专业</th><th>国家线</th><th>院校线</th><th>学习形式</th><th>初试分数段</th><th>人数分布</th><th>录取人数</th><th>录取比例</th><th>操作</th></tr></thead><tbody>';
+        rows.forEach(doc => {
+            html += `<tr><td>${doc.year||''}</td><td>${doc.university||''}</td><td>${doc.region||''}</td><td>${doc.major||''}</td><td>${doc.nationalScore||''}</td><td>${doc.universityScore||''}</td><td>${doc.studyMode||''}</td><td>${doc.scoreRange||''}</td><td>${doc.applicantCount||''}</td><td>${doc.admittedCount||''}</td><td>${doc.admissionRate||''}</td><td><button onclick="deleteDoc('admission_analysis','${doc._id}')" class="text-red-600">删除</button></td></tr>`;
+        });
+        html += '</tbody></table>';
+        document.getElementById('analysisTableContainer').innerHTML = html;
+    }
+
+    // 地理分区表
+    function renderRegions() {
+        let html = '<table><thead><tr><th>地理分区</th><th>省份列表</th></tr></thead><tbody>';
+        for (let region in regionProvinces) {
+            html += `<tr><td>${region}</td><td>${regionProvinces[region].join('、')}</td></tr>`;
+        }
+        html += '</tbody></table>';
+        document.getElementById('regionTableContainer').innerHTML = html;
+    }
+
+    // 删除文档
+    window.deleteDoc = async function(dbName, id) {
+        if (!requireAdmin()) return;
+        if (!confirm('确定删除？')) return;
+        const db = dbName === 'applications' ? dbApplications : (dbName === 'universities' ? dbUniversities : dbAdmission);
+        try {
+            const doc = await db.get(id);
+            await db.remove(doc);
+            renderCurrentTab();
+        } catch (e) { alert('删除失败'); }
+    };
+
+    // 新增院校 (简易)
+    window.addUniversity = function() {
+        if (!requireAdmin()) return;
+        alert('新增院校请使用导入Excel或手动编写代码，本演示仅展示列表。');
+    };
+
+    // 编辑院校 (简易)
+    window.editUniversity = async function(id) {
+        if (!requireAdmin()) return;
+        alert('编辑功能待完善，可直接操作数据库。');
+    };
+
+    // 新增分析记录
+    window.addAnalysis = function() {
+        if (!requireAdmin()) return;
+        alert('新增分析记录请使用导入Excel或手动编写代码。');
+    };
+
+    // 导出表格
+    window.exportTable = async function(type) {
+        if (!requireAdmin()) return;
+        let data, filename;
+        if (type === 'applications') {
+            const all = await dbApplications.allDocs({ include_docs: true });
+            const rows = all.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design'));
+            filename = '报考意向表.csv';
+            data = '姓名,准考证号,报考院校,专业,学习形式,意向省份,意向城市,卷面总分,英语,管综,加分,有效总分,考试时间,推荐状态,提交时间\n' + rows.map(r => `${r.姓名},${r.准考证号},${r.报考院校},${r.报考专业},${r.学习形式},${r.意向省份},${r.意向城市},${r.卷面总分},${r.英语单科},${r.管综单科},${r.加分},${r.有效总分},${r.考试时间},${r.推荐状态},${r.提交时间}`).join('\n');
+        } else if (type === 'universities') {
+            const all = await dbUniversities.allDocs({ include_docs: true });
+            const rows = all.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design'));
+            filename = '院校库.csv';
+            data = '院校名称,省份,培养地点,专业,学校性质,全日制学费,非全日制学费,分数线\n' + rows.map(r => `${r.name},${r.province},${r.city},${r.major},${r.schoolType},${r.tuitionFull||''},${r.tuitionPart||''},${r.scoreLine}`).join('\n');
+        } else if (type === 'analysis') {
+            const all = await dbAdmission.allDocs({ include_docs: true });
+            const rows = all.rows.map(r => r.doc).filter(d => !d._id.startsWith('_design'));
+            filename = '录取分析.csv';
+            data = '年份,院校,院区,专业,国家线,院校线,学习形式,初试分数段,人数分布,录取人数,录取比例\n' + rows.map(r => `${r.year},${r.university},${r.region},${r.major},${r.nationalScore},${r.universityScore},${r.studyMode},${r.scoreRange},${r.applicantCount},${r.admittedCount},${r.admissionRate}`).join('\n');
+        } else return;
+        const blob = new Blob(['\uFEFF' + data], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        link.click();
+    };
+
+    // 初始渲染
+    renderApplications();
+})();
+</script>
+</body>
+</html>

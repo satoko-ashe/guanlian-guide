@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能课程表 · 日历视图</title>
+    <style>
+        /* === 全局样式 (与原一致，略作精简) === */
+        * { box-sizing: border-box; font-family: 'Segoe UI', Roboto, sans-serif; }
+        body {
+            background: #f4f7fb; margin: 0; min-height: 100vh; display: flex;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .login-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+            display: flex; align-items: center; justify-content: center; z-index: 1000;
+        }
+        .login-card {
+            background: white; border-radius: 32px; padding: 30px 40px;
+            width: 400px; box-shadow: 0 30px 50px rgba(0,0,0,0.2);
+        }
+        .login-tabs { display: flex; gap: 10px; margin: 20px 0; }
+        .tab-btn {
+            flex: 1; padding: 12px; border: none; background: #eef2f7; border-radius: 40px;
+            font-weight: 600; cursor: pointer; transition: 0.2s;
+        }
+        .tab-btn.active { background: #1e2f41; color: white; }
+        .login-form { display: none; flex-direction: column; gap: 15px; }
+        .login-form.active { display: flex; }
+        .login-form input, .login-form select {
+            padding: 14px 18px; border: 1px solid #cfddee; border-radius: 40px;
+            font-size: 1rem; outline: none;
+        }
+        .login-btn {
+            background: #1e2f41; color: white; border: none; padding: 16px;
+            border-radius: 40px; font-weight: 700; font-size: 1.1rem; cursor: pointer;
+        }
+        .login-hint { font-size: 0.8rem; color: #6b7b8f; text-align: center; }
+
+        .card {
+            max-width: 1400px; width: 100%; background: white; border-radius: 32px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.08); padding: 28px 30px 36px;
+        }
+        .header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 28px; flex-wrap: wrap; gap: 15px;
+        }
+        .title-section h1 { font-size: 1.9rem; font-weight: 600; margin: 0 0 6px 0; color: #1a2639; }
+        .current-month input {
+            font-size: 1.2rem; border: 1px solid #cfddee; border-radius: 40px;
+            padding: 6px 16px; background: #eef2f7; color: #1f2a3f; font-weight: 500;
+        }
+        .filter-area { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+        .filter-label { font-weight: 600; color: #2c3e50; }
+        #classFilter {
+            padding: 12px 24px; border-radius: 40px; border: 1px solid #cfddee;
+            background: white; font-size: 1rem; min-width: 240px; cursor: pointer;
+        }
+        .admin-btn, .logout-btn {
+            padding: 10px 18px; border-radius: 40px; border: none; font-weight: 600;
+            cursor: pointer; background: #eef2f7;
+        }
+        .admin-btn { background: #ffecbb; }
+        .logout-btn { background: #ffe1d9; color: #a13e2d; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 14px; margin: 20px 0; }
+        .weekday { text-align: center; font-weight: 600; color: #2c3e50; background: #e6edf6; padding: 12px; border-radius: 30px; }
+        .calendar-cell {
+            background: white; border: 1px solid #e2eaf2; border-radius: 24px; padding: 14px 10px 10px 14px;
+            min-height: 150px; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+            display: flex; flex-direction: column; cursor: pointer;
+        }
+        .calendar-cell.has-lesson-future { background-color: #fff3f0; border-color: #f8c3b3; }
+        .calendar-cell.has-lesson-past { background-color: #eceff4; border-color: #c0cbd8; }
+        .cell-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+        .date-info { font-weight: 600; font-size: 1.1rem; }
+        .weekday-sm { font-size: 0.75rem; color: #6b7b8f; margin-left: 4px; }
+        .lesson-badge {
+            background: #e34f4f; color: white; font-size: 0.8rem; font-weight: 700;
+            min-width: 24px; height: 24px; border-radius: 30px; display: flex;
+            align-items: center; justify-content: center; padding: 0 6px;
+        }
+        .period-row { display: flex; justify-content: space-around; margin-top: 8px; border-top: 1px dashed #d8e2ed; padding-top: 12px; }
+        .period-item { font-size: 0.9rem; font-weight: 500; color: #9aabbc; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .period-item.active-future { color: #c44536; font-weight: 700; }
+        .period-item.active-past { color: #6f7c8f; font-weight: 700; }
+        .period-item .period-name { background: #f0f5fa; padding: 4px 8px; border-radius: 30px; }
+        .period-item.active-future .period-name { background: #fce9e5; color: #b13e2d; }
+        .period-item.active-past .period-name { background: #e1e6ec; color: #4a5a6e; }
+        .detail-panel { background: #f8fafd; border-radius: 28px; padding: 24px 30px; margin-top: 20px; border: 1px solid #d9e4f0; }
+        .lesson-list { display: flex; flex-direction: column; gap: 12px; max-height: 400px; overflow-y: auto; }
+        .lesson-item {
+            background: white; border-radius: 18px; padding: 16px 22px; display: flex;
+            flex-wrap: wrap; align-items: center; gap: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+            border: 1px solid #e2eaf1; position: relative;
+        }
+        .lesson-subject { font-weight: 700; font-size: 1.15rem; min-width: 180px; color: #153243; cursor: pointer; }
+        .lesson-time { background: #eef4fa; padding: 6px 16px; border-radius: 40px; }
+        .lesson-hours { background: #dde9f5; padding: 6px 16px; border-radius: 40px; font-weight: 600; }
+        .lesson-teacher { display: flex; align-items: center; gap: 6px; color: #40627c; }
+        .read-tag { color: green; font-weight: 600; margin-left: 10px; font-size: 0.9rem; }
+        .status-btns { display: flex; gap: 8px; margin-left: auto; }
+        .status-btn { border: 1px solid #ccc; background: white; border-radius: 20px; padding: 4px 12px; cursor: pointer; }
+        .status-btn.active { background: #1e2f41; color: white; border-color: #1e2f41; }
+        .add-course-btn { margin-top: 16px; padding: 12px; width: 100%; border-radius: 40px; background: #1e2f41; color: white; font-weight: 600; border: none; cursor: pointer; }
+    </style>
+    <!-- 引入 PouchDB -->
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
+</head>
+<body>
+    <!-- 登录遮罩层 -->
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-card">
+            <h2>📘 课程表登录</h2>
+            <div class="login-tabs">
+                <button class="tab-btn active" id="studentTab">学员登录</button>
+                <button class="tab-btn" id="adminTab">管理员登录</button>
+            </div>
+            <!-- 学员登录表单 -->
+            <div id="studentLoginForm" class="login-form active">
+                <input type="text" id="studentName" placeholder="姓名" value="张三">
+                <input type="tel" id="studentPhone" placeholder="手机号" value="13800138000">
+                <select id="studentClass"></select>
+                <button id="studentLoginBtn" class="login-btn">进入课程表</button>
+                <p class="login-hint">请使用花名册中的姓名、手机号和班级登录</p>
+            </div>
+            <!-- 管理员登录表单 -->
+            <div id="adminLoginForm" class="login-form">
+                <input type="text" id="adminUser" placeholder="账号" value="admin">
+                <input type="password" id="adminPwd" placeholder="密码" value="2026">
+                <button id="adminLoginBtn" class="login-btn">管理员登录</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主界面 -->
+    <div id="mainApp" class="card" style="display: none;">
+        <div class="header">
+            <div class="title-section">
+                <h1>📅 考期课程表</h1>
+                <div class="current-month">
+                    <input type="month" id="monthPicker" value="2025-04">
+                </div>
+            </div>
+            <div class="filter-area">
+                <span class="filter-label">班级：</span>
+                <select id="classFilter" disabled></select>
+                <!-- 后台管理按钮链接改为 course-admin.html -->
+                <button id="adminManageBtn" style="display: none;" class="admin-btn" onclick="window.open('course-admin.html', '_blank')">⚙️ 后台管理</button>
+                <button id="logoutBtn" class="logout-btn">🚪 退出</button>
+            </div>
+        </div>
+
+        <!-- 日历星期 -->
+        <div class="calendar-grid" id="weekdays-container">
+            <div class="weekday">周日</div><div class="weekday">周一</div><div class="weekday">周二</div>
+            <div class="weekday">周三</div><div class="weekday">周四</div><div class="weekday">周五</div><div class="weekday">周六</div>
+        </div>
+        <!-- 日历网格 -->
+        <div class="calendar-grid" id="calendar-container"></div>
+
+        <!-- 详情面板 -->
+        <div class="detail-panel" id="detailPanel">
+            <div class="detail-title">
+                📋 课程详情
+                <span id="selected-date-label">请点击日期</span>
+            </div>
+            <div id="lessonDetailList" class="lesson-list"></div>
+            <button id="addCourseBtn" class="add-course-btn" style="display: none;">+ 新增课程</button>
+        </div>
+    </div>
+
+    <!-- 数据加载提示 -->
+    <div id="loading" style="display: none; text-align: center;">加载数据中...</div>
+
+    <script>
+        (function() {
+            // ---------- CouchDB 配置 ----------
+            const COUCHDB_URL = 'http://satoko:1793364876@localhost:5984'; // 请根据实际部署修改
+
+            // ---------- 数据库工厂 ----------
+            const createDB = (name) => {
+                const localDB = new PouchDB(name);
+                if (COUCHDB_URL) {
+                    const remoteDB = new PouchDB(`${COUCHDB_URL}/${name}`);
+                    localDB.sync(remoteDB, { live: true, retry: true })
+                        .on('error', console.warn);
+                }
+                return localDB;
+            };
+
+            // ---------- PouchDB 实例 ----------
+            const dbClasses = createDB('classes');
+            const dbProducts = createDB('products');
+            const dbStaff = createDB('course_staff');      // 教务/讲师员工表
+            const dbCourses = createDB('courses');
+            const dbStudents = createDB('students');
+            const dbSpecials = createDB('specials');
+            const dbClickRecords = createDB('click_records');
+            const dbCustomStatus = createDB('custom_status');
+            const dbAttendance = createDB('attendance');
+
+            // ---------- 默认数据 (与原data.js保持一致，但添加邮箱字段到员工表) ----------
+            const defaultClasses = [
+                { id: 1, name: '25考期1班', period: '25考期' }, { id: 2, name: '25考期2班', period: '25考期' },
+                { id: 3, name: '25考期3班', period: '25考期' }, { id: 4, name: '25考期4班', period: '25考期' },
+                { id: 5, name: '25考期5班', period: '25考期' }, { id: 6, name: '25考期6班', period: '25考期' },
+                { id: 7, name: '25考期7班', period: '25考期' }, { id: 8, name: '25考期8班', period: '25考期' },
+                { id: 9, name: '25考期9班', period: '25考期' }, { id: 10, name: '26考期1班', period: '26考期' },
+                { id: 11, name: '26考期2班', period: '26考期' }, { id: 12, name: '26考期3班', period: '26考期' },
+                { id: 13, name: '26考期4班', period: '26考期' }, { id: 14, name: '26考期5班', period: '26考期' },
+                { id: 15, name: '26考期6班', period: '26考期' }, { id: 16, name: '26考期7班', period: '26考期' },
+                { id: 17, name: '26考期8班', period: '26考期' }, { id: 18, name: '26考期9班', period: '26考期' },
+                { id: 19, name: '27考期1班', period: '27考期' }, { id: 20, name: '27考期2班', period: '27考期' },
+                { id: 21, name: '27考期3班', period: '27考期' }
+            ];
+            const defaultProducts = [
+                { id: 1, name: '《精品保障班》', subjects: ['数学预备', '模拟测试', '英语写作', '英语阅读', '写作基础', '逻辑导论', '英语基础必修'] },
+                { id: 2, name: '《全能学习班》', subjects: ['英语导学入门', '数学导学入门', '数学预备', '模拟测试', '英语写作', '英语阅读', '写作基础', '逻辑导论', '英语基础必修'] },
+                { id: 3, name: '《高级套餐班》', subjects: ['英语导学入门', '数学导学入门', '政治基础梳理', '数学预备', '模拟测试', '英语写作', '英语阅读', '写作基础', '逻辑导论', '英语基础必修', '名师精讲课'] }
+            ];
+            const defaultStaff = [
+                { id: 1, name: '管理员', account: 'admin', password: '2026', email: 'admin@example.com' },
+                { id: 2, name: '李老师', account: 'lisan', password: '2025', email: 'lisan@example.com' },
+                { id: 3, name: '王老师', account: 'wang', password: '2025', email: 'wang@example.com' },
+                { id: 4, name: '张老师', account: 'zhang', password: '2025', email: 'zhang@example.com' }
+            ];
+            const defaultCourses = [
+                { id: 1, class_id: 1, category: '英语导学入门', subject_name: '英语导学入门1', teacher: '来超', course_date: '2025-04-12', period: 'evening', start_time: '19:30', end_time: '21:30', hours: 2.0, link: 'https://example.com/english1' },
+                { id: 2, class_id: 1, category: '政治基础梳理', subject_name: '政治基础梳理', teacher: '赵卓', course_date: '2025-04-12', period: 'morning', start_time: '09:00', end_time: '11:00', hours: 2.0, link: '' },
+                { id: 3, class_id: 1, category: '数学预备', subject_name: '数学预备', teacher: '李阳', course_date: '2025-04-15', period: 'afternoon', start_time: '14:00', end_time: '16:30', hours: 2.5, link: '' },
+                { id: 4, class_id: 1, category: '模拟测试', subject_name: '模拟测试', teacher: '何翔', course_date: '2025-04-22', period: 'morning', start_time: '08:30', end_time: '11:30', hours: 3.0, link: '' },
+                { id: 5, class_id: 1, category: '英语写作', subject_name: '英语写作', teacher: '来超', course_date: '2025-04-22', period: 'evening', start_time: '19:00', end_time: '21:00', hours: 2.0, link: '' },
+                { id: 6, class_id: 2, category: '英语阅读', subject_name: '英语阅读', teacher: '陈雅', course_date: '2025-04-12', period: 'morning', start_time: '10:00', end_time: '12:00', hours: 2.0, link: '' },
+                { id: 7, class_id: 2, category: '写作基础', subject_name: '写作基础', teacher: '王丽', course_date: '2025-04-21', period: 'afternoon', start_time: '13:30', end_time: '15:30', hours: 2.0, link: '' },
+                { id: 8, class_id: 3, category: '逻辑导论', subject_name: '逻辑导论', teacher: '周岩', course_date: '2025-04-20', period: 'evening', start_time: '18:30', end_time: '20:30', hours: 2.0, link: '' },
+                { id: 9, class_id: 1, category: '英语导学入门', subject_name: '英语导学入门2', teacher: '来超', course_date: '2025-05-21', period: 'evening', start_time: '19:00', end_time: '21:00', hours: 2.0, link: '' },
+                { id: 11, class_id: 1, category: '英语基础必修', subject_name: '英语基础必修3', teacher: '来超', course_date: '2025-07-23', period: 'evening', start_time: '19:00', end_time: '21:00', hours: 2.0, link: '' },
+                { id: 12, class_id: 1, category: '英语基础必修', subject_name: '英语基础必修4', teacher: '来超', course_date: '2025-05-24', period: 'morning', start_time: '10:00', end_time: '12:00', hours: 2.0, link: '' },
+                { id: 13, class_id: 1, category: '英语基础必修', subject_name: '英语基础必修5', teacher: '来超', course_date: '2025-04-25', period: 'afternoon', start_time: '13:30', end_time: '15:30', hours: 2.0, link: '' },
+                { id: 21, class_id: 7, category: '英语基础必修', subject_name: '英语基础必修3', teacher: '陈雅', course_date: '2025-07-23', period: 'evening', start_time: '19:00', end_time: '21:00', hours: 2.0, link: '' },
+                { id: 22, class_id: 7, category: '英语基础必修', subject_name: '英语基础必修4', teacher: '陈雅', course_date: '2025-05-24', period: 'morning', start_time: '10:00', end_time: '12:00', hours: 2.0, link: '' },
+                { id: 23, class_id: 7, category: '英语基础必修', subject_name: '英语基础必修5', teacher: '陈雅', course_date: '2025-04-25', period: 'afternoon', start_time: '13:30', end_time: '15:30', hours: 2.0, link: '' },
+                { id: 24, class_id: 7, category: '英语基础必修', subject_name: '英语基础必修6', teacher: '陈雅', course_date: '2025-04-26', period: 'evening', start_time: '19:00', end_time: '21:00', hours: 2.0, link: '' }
+            ];
+            const defaultStudents = [
+                { id: 1, name: '张三', phone: '13800138000', product_name: '《精品保障班》', class_id: 1, remark: '示例' },
+                { id: 2, name: '张宇婷', phone: '18200403276', product_name: '《全能学习班》', class_id: 5, remark: '24考期没过' },
+                { id: 3, name: '陈维佳', phone: '13594599932', product_name: '《高级套餐班》', class_id: 6, remark: '转班' },
+                { id: 4, name: '沈妙芹', phone: '18181843560', product_name: '《精品保障班》', class_id: 6, remark: '' }
+            ];
+            const defaultSpecials = [
+                { id: 1, name: '张三', phone: '13800138000', product_name: '《精品保障班》', replace_category: '英语基础必修', original_class: '25考期1班', target_class: '25考期7班' }
+            ];
+
+            // 全局变量（缓存）
+            let classList = [];
+            let products = [];
+            let staff = [];
+            let courses = [];
+            let students = [];
+            let specials = [];
+            let clickRecords = [];
+            let customStatus = [];
+            let attendanceRecords = [];
+
+            // 加载所有数据（如果数据库为空则填充默认数据）
+            async function loadAllData() {
+                // 班级表
+                const classDocs = await dbClasses.allDocs({ include_docs: true });
+                if (classDocs.rows.length === 0) {
+                    for (let cls of defaultClasses) {
+                        await dbClasses.put({ ...cls, _id: 'class_' + cls.id, _ctime: Date.now() - cls.id * 1000 });
+                    }
+                }
+                classList = (await dbClasses.allDocs({ include_docs: true })).rows.map(r => r.doc);
+
+                // 产品表
+                const productDocs = await dbProducts.allDocs({ include_docs: true });
+                if (productDocs.rows.length === 0) {
+                    for (let p of defaultProducts) {
+                        await dbProducts.put({ ...p, _id: 'product_' + p.id, _ctime: Date.now() - p.id * 1000 });
+                    }
+                }
+                products = (await dbProducts.allDocs({ include_docs: true })).rows.map(r => r.doc);
+
+                // 员工表（教务/讲师）
+                const staffDocs = await dbStaff.allDocs({ include_docs: true });
+                if (staffDocs.rows.length === 0) {
+                    for (let s of defaultStaff) {
+                        await dbStaff.put({ ...s, _id: 'staff_' + s.id, _ctime: Date.now() - s.id * 1000 });
+                    }
+                }
+                staff = (await dbStaff.allDocs({ include_docs: true })).rows.map(r => r.doc);
+
+                // 课程表
+                const courseDocs = await dbCourses.allDocs({ include_docs: true });
+                if (courseDocs.rows.length === 0) {
+                    for (let c of defaultCourses) {
+                        await dbCourses.put({ ...c, _id: 'course_' + c.id, _ctime: Date.now() - c.id * 1000 });
+                    }
+                }
+                courses = (await dbCourses.allDocs({ include_docs: true })).rows.map(r => r.doc);
+
+                // 学员表
+                const studentDocs = await dbStudents.allDocs({ include_docs: true });
+                if (studentDocs.rows.length === 0) {
+                    for (let s of defaultStudents) {
+                        await dbStudents.put({ ...s, _id: 'student_' + s.id, _ctime: Date.now() - s.id * 1000 });
+                    }
+                }
+                students = (await dbStudents.allDocs({ include_docs: true })).rows.map(r => r.doc);
+
+                // 特殊更换表
+                const specialDocs = await dbSpecials.allDocs({ include_docs: true });
+                if (specialDocs.rows.length === 0) {
+                    for (let sp of defaultSpecials) {
+                        await dbSpecials.put({ ...sp, _id: 'special_' + sp.id, _ctime: Date.now() - sp.id * 1000 });
+                    }
+                }
+                specials = (await dbSpecials.allDocs({ include_docs: true })).rows.map(r => r.doc);
+
+                // 点击记录等可为空
+                clickRecords = (await dbClickRecords.allDocs({ include_docs: true })).rows.map(r => r.doc);
+                customStatus = (await dbCustomStatus.allDocs({ include_docs: true })).rows.map(r => r.doc);
+                attendanceRecords = (await dbAttendance.allDocs({ include_docs: true })).rows.map(r => r.doc);
+
+                // 暴露给全局（方便原有代码使用）
+                window.classList = classList;
+                window.products = products;
+                window.staff = staff;
+                window.courses = courses;
+                window.students = students;
+                window.special = specials;
+                window.clickRecords = clickRecords;
+                window.customStatus = customStatus;
+                window.attendanceRecords = attendanceRecords;
+            }
+
+            // 保存函数（修改后调用）
+            async function saveData(type, data) {
+                const dbMap = {
+                    class: dbClasses,
+                    product: dbProducts,
+                    staff: dbStaff,
+                    course: dbCourses,
+                    student: dbStudents,
+                    special: dbSpecials,
+                    click: dbClickRecords,
+                    custom: dbCustomStatus,
+                    attendance: dbAttendance
+                };
+                const db = dbMap[type];
+                if (!db) return;
+                for (let item of data) {
+                    try {
+                        await db.put(item);
+                    } catch (e) {
+                        // 可能_id冲突，忽略
+                    }
+                }
+            }
+
+            // ---------- 原script.js逻辑，但改为使用缓存变量，并在修改后调用保存 ----------
+            let currentUser = null;
+            let isAdmin = false;
+            let selectedClassId = 1;
+            let currentMonth = '2025-04';
+            let selectedDate = '';
+
+            // DOM
+            const loginOverlay = document.getElementById('loginOverlay');
+            const mainApp = document.getElementById('mainApp');
+            const monthPicker = document.getElementById('monthPicker');
+            const classFilter = document.getElementById('classFilter');
+            const calendarContainer = document.getElementById('calendar-container');
+            const detailDateSpan = document.getElementById('selected-date-label');
+            const lessonDetailList = document.getElementById('lessonDetailList');
+            const adminManageBtn = document.getElementById('adminManageBtn');
+            const addCourseBtn = document.getElementById('addCourseBtn');
+            const logoutBtn = document.getElementById('logoutBtn');
+
+            // 辅助函数
+            function getNow() { return new Date(); }
+            function isCoursePast(course) {
+                const now = getNow();
+                const [y, m, d] = course.course_date.split('-').map(Number);
+                const [eh, em] = course.end_time.split(':').map(Number);
+                const endDate = new Date(y, m-1, d, eh, em, 0);
+                return now > endDate;
+            }
+
+            function getClassIdByName(name) {
+                const c = window.classList.find(cls => cls.name === name);
+                return c ? c.id : null;
+            }
+            window.getClassIdByName = getClassIdByName;
+
+            // 获取当前用户可见课程列表
+            function getVisibleCourses() {
+                if (!currentUser) return [];
+                if (isAdmin) {
+                    return window.courses.filter(c => c.class_id === selectedClassId);
+                } else {
+                    let student = window.students.find(s => s.id === currentUser.id);
+                    if (!student) return [];
+                    const product = window.products.find(p => p.name === student.product_name);
+                    const allowedCategories = product ? product.subjects : [];
+                    let baseCourses = window.courses.filter(c => c.class_id === student.class_id && allowedCategories.includes(c.category));
+
+                    const specials = window.special.filter(sp => sp.name === student.name && sp.phone === student.phone);
+                    specials.forEach(sp => {
+                        const origClassId = getClassIdByName(sp.original_class);
+                        const targetClassId = getClassIdByName(sp.target_class);
+                        if (!origClassId || !targetClassId) return;
+                        baseCourses = baseCourses.filter(c => !(c.class_id === origClassId && c.category === sp.replace_category));
+                        const targetCourses = window.courses.filter(c => c.class_id === targetClassId && c.category === sp.replace_category);
+                        baseCourses = [...baseCourses, ...targetCourses];
+                    });
+                    return Array.from(new Map(baseCourses.map(c => [c.id, c])).values());
+                }
+            }
+
+            function renderClassFilter() {
+                let options = window.classList.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+                classFilter.innerHTML = options;
+                if (!isAdmin && currentUser) {
+                    classFilter.value = currentUser.class_id;
+                    classFilter.disabled = true;
+                } else {
+                    classFilter.disabled = false;
+                    classFilter.value = selectedClassId;
+                }
+            }
+
+            function getMonthDays(year, month) { return new Date(year, month + 1, 0).getDate(); }
+
+            function renderCalendar() {
+                const [year, month] = currentMonth.split('-').map(Number);
+                const firstDay = new Date(year, month-1, 1).getDay();
+                const daysInMonth = getMonthDays(year, month-1);
+                const visibleCourses = getVisibleCourses() || [];
+
+                const courseMap = new Map();
+                visibleCourses.forEach(c => {
+                    if (!courseMap.has(c.course_date)) courseMap.set(c.course_date, []);
+                    courseMap.get(c.course_date).push(c);
+                });
+
+                let html = '';
+                for (let i = 0; i < firstDay; i++) html += `<div class="calendar-cell" style="background:#f6faff;"></div>`;
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    const coursesToday = courseMap.get(dateStr) || [];
+                    const lessonCount = coursesToday.length;
+                    const hasAnyFuture = coursesToday.some(c => !isCoursePast(c));
+                    const cellClass = lessonCount ? (hasAnyFuture ? 'has-lesson-future' : 'has-lesson-past') : '';
+
+                    const periods = ['morning', 'afternoon', 'evening'];
+                    let periodHtml = '';
+                    periods.forEach(p => {
+                        const hasFuture = coursesToday.some(c => c.period === p && !isCoursePast(c));
+                        const hasCourse = coursesToday.some(c => c.period === p);
+                        let activeClass = '';
+                        if (hasCourse) activeClass = hasFuture ? 'active-future' : 'active-past';
+                        periodHtml += `<div class="period-item ${activeClass}"><span class="period-name">${p==='morning'?'上午':p==='afternoon'?'下午':'晚上'}</span></div>`;
+                    });
+
+                    const weekday = new Date(year, month-1, d).getDay();
+                    const weekdayStr = ['周日','周一','周二','周三','周四','周五','周六'][weekday];
+
+                    html += `
+                        <div class="calendar-cell ${cellClass}" data-date="${dateStr}">
+                            <div class="cell-header">
+                                <span class="date-info">${d} <span class="weekday-sm">${weekdayStr}</span></span>
+                                ${lessonCount ? `<span class="lesson-badge">${lessonCount}</span>` : ''}
+                            </div>
+                            <div class="period-row">${periodHtml}</div>
+                        </div>
+                    `;
+                }
+                calendarContainer.innerHTML = html;
+            }
+
+            function showDetail(dateStr) {
+                selectedDate = dateStr;
+                detailDateSpan.textContent = dateStr.replace(/-/g,'/');
+                const visibleCourses = getVisibleCourses() || [];
+                const coursesToday = visibleCourses.filter(c => c.course_date === dateStr)
+                    .sort((a,b) => a.start_time.localeCompare(b.start_time));
+
+                if (!coursesToday.length) {
+                    lessonDetailList.innerHTML = '<div class="empty-lessons">📭 该日无课程</div>';
+                    return;
+                }
+                let html = '';
+                coursesToday.forEach(c => {
+                    const isPast = isCoursePast(c);
+                    const hasClicked = currentUser && window.clickRecords.some(r => r.userId === currentUser.id && r.courseId === c.id);
+                    const userStatus = currentUser ? (window.customStatus.find(s => s.userId === currentUser.id && s.courseId === c.id)?.status || 'waiting') : 'waiting';
+                    const statusText = { attended: '已出勤', waiting: '待观看', review: '需重温' };
+                    const attendance = currentUser ? window.attendanceRecords.find(a => a.userId === currentUser.id && a.courseId === c.id) : null;
+                    const actualHours = attendance ? ` (实到 ${attendance.actualHours}h)` : '';
+
+                    html += `
+                        <div class="lesson-item" data-course-id="${c.id}">
+                            <span class="lesson-subject" data-link="${c.link || ''}" onclick="if(this.dataset.link) { window.open(this.dataset.link); window.recordClick(${c.id}); }">📘 ${c.subject_name}</span>
+                            <span class="lesson-time">${c.start_time}-${c.end_time}</span>
+                            <span class="lesson-hours">⏱️ ${c.hours}h${actualHours}</span>
+                            <span class="lesson-teacher">${c.teacher}</span>
+                            ${hasClicked ? '<span class="read-tag">✅ 已阅</span>' : ''}
+                            ${!isAdmin && currentUser ? `
+                            <div class="status-btns">
+                                <button class="status-btn ${userStatus==='attended'?'active':''}" onclick="window.setCustomStatus(${c.id}, 'attended')">已出勤</button>
+                                <button class="status-btn ${userStatus==='waiting'?'active':''}" onclick="window.setCustomStatus(${c.id}, 'waiting')">待观看</button>
+                                <button class="status-btn ${userStatus==='review'?'active':''}" onclick="window.setCustomStatus(${c.id}, 'review')">需重温</button>
+                            </div>` : ''}
+                        </div>
+                    `;
+                });
+                lessonDetailList.innerHTML = html;
+            }
+
+            window.recordClick = async function(courseId) {
+                if (!currentUser) return;
+                if (!window.clickRecords.some(r => r.userId === currentUser.id && r.courseId === courseId)) {
+                    const newRec = { userId: currentUser.id, courseId, timestamp: new Date().toISOString(), _id: 'click_' + Date.now() + Math.random() };
+                    window.clickRecords.push(newRec);
+                    await saveData('click', window.clickRecords);
+                    if (selectedDate) showDetail(selectedDate);
+                }
+            };
+
+            window.setCustomStatus = async function(courseId, status) {
+                if (!currentUser) return;
+                const existing = window.customStatus.find(s => s.userId === currentUser.id && s.courseId === courseId);
+                if (existing) {
+                    existing.status = status;
+                } else {
+                    window.customStatus.push({ userId: currentUser.id, courseId, status, _id: 'custom_' + Date.now() + Math.random() });
+                }
+                await saveData('custom', window.customStatus);
+                showDetail(selectedDate);
+            };
+
+            // 登录验证
+            const ADMIN_ACCOUNT = '管理员';
+            const ADMIN_PASSWORD = '2026';
+
+            function initLogin() {
+                document.getElementById('studentTab').addEventListener('click', () => {
+                    document.getElementById('studentTab').classList.add('active');
+                    document.getElementById('adminTab').classList.remove('active');
+                    document.getElementById('studentLoginForm').classList.add('active');
+                    document.getElementById('adminLoginForm').classList.remove('active');
+                });
+                document.getElementById('adminTab').addEventListener('click', () => {
+                    document.getElementById('adminTab').classList.add('active');
+                    document.getElementById('studentTab').classList.remove('active');
+                    document.getElementById('adminLoginForm').classList.add('active');
+                    document.getElementById('studentLoginForm').classList.remove('active');
+                });
+
+                // 学员登录
+                document.getElementById('studentLoginBtn').addEventListener('click', () => {
+                    const name = document.getElementById('studentName').value.trim();
+                    const phone = document.getElementById('studentPhone').value.trim();
+                    const classId = parseInt(document.getElementById('studentClass').value);
+                    const user = window.students.find(r => r.name === name && r.phone === phone && r.class_id === classId);
+                    if (user) {
+                        currentUser = { ...user, role: 'student' };
+                        isAdmin = false;
+                        selectedClassId = user.class_id;
+                        loginSuccess();
+                    } else alert('信息不匹配或不在花名册中');
+                });
+
+                // 管理员登录 (从staff验证 + 硬编码)
+                document.getElementById('adminLoginBtn').addEventListener('click', () => {
+                    const account = document.getElementById('adminUser').value;
+                    const pwd = document.getElementById('adminPwd').value;
+
+                    // 管理员硬编码
+                    if (account === ADMIN_ACCOUNT && pwd === ADMIN_PASSWORD) {
+                        currentUser = { id: 0, name: ADMIN_ACCOUNT, role: 'admin' };
+                        isAdmin = true;
+                        selectedClassId = 1;
+                        loginSuccess();
+                        return;
+                    }
+
+                    // 普通员工验证
+                    const staffUser = window.staff.find(s => s.account === account && s.password === pwd);
+                    if (staffUser) {
+                        currentUser = { id: staffUser.id, name: staffUser.name, role: 'admin' };
+                        isAdmin = true;
+                        selectedClassId = 1;
+                        loginSuccess();
+                    } else alert('管理员账号或密码错误');
+                });
+
+                // 班级下拉初始化
+                const studentClass = document.getElementById('studentClass');
+                window.classList.forEach(c => studentClass.add(new Option(c.name, c.id)));
+            }
+
+            function loginSuccess() {
+                loginOverlay.style.display = 'none';
+                mainApp.style.display = 'block';
+                monthPicker.value = currentMonth;
+                renderClassFilter();
+                renderCalendar();
+                adminManageBtn.style.display = isAdmin ? 'inline-block' : 'none';
+                addCourseBtn.style.display = isAdmin ? 'block' : 'none';
+                const todayStr = new Date().toISOString().slice(0,10);
+                const visible = getVisibleCourses() || [];
+                if (visible.some(c => c.course_date === todayStr)) showDetail(todayStr);
+                else lessonDetailList.innerHTML = '<div class="empty-lessons">点击日期查看课程</div>';
+            }
+
+            logoutBtn.addEventListener('click', () => { location.reload(); });
+
+            monthPicker.addEventListener('change', (e) => { currentMonth = e.target.value; renderCalendar(); });
+
+            classFilter.addEventListener('change', (e) => {
+                selectedClassId = parseInt(e.target.value);
+                renderCalendar();
+                if (selectedDate) showDetail(selectedDate);
+            });
+
+            calendarContainer.addEventListener('click', (e) => {
+                const cell = e.target.closest('.calendar-cell');
+                if (cell?.dataset.date) showDetail(cell.dataset.date);
+            });
+
+            addCourseBtn.addEventListener('click', async () => {
+                if (!isAdmin) return;
+                const newCourse = {
+                    id: Math.max(...window.courses.map(c=>c.id),0)+1,
+                    class_id: selectedClassId,
+                    category: prompt('课程大类 (如 英语导学入门)'),
+                    subject_name: prompt('科目名称'),
+                    teacher: prompt('主讲人'),
+                    course_date: selectedDate || prompt('日期 YYYY-MM-DD'),
+                    period: prompt('时段 (morning/afternoon/evening)'),
+                    start_time: prompt('开始时间 HH:MM'),
+                    end_time: prompt('结束时间 HH:MM'),
+                    hours: parseFloat(prompt('课时')),
+                    link: prompt('链接') || '',
+                    _id: 'course_' + Date.now()
+                };
+                window.courses.push(newCourse);
+                await saveData('course', window.courses);
+                renderCalendar();
+                if (selectedDate) showDetail(selectedDate);
+            });
+
+            // 启动：先加载数据再初始化界面
+            async function start() {
+                document.getElementById('loading').style.display = 'block';
+                await loadAllData();
+                document.getElementById('loading').style.display = 'none';
+                initLogin();
+            }
+            start();
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,1803 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>知云聊天 · 学员管理平台</title>
+  <!-- PouchDB + 远程 CouchDB 同步 -->
+  <script src="https://cdn.jsdelivr.net/npm/pouchdb@9.0.0/dist/pouchdb.min.js"></script>
+  <!-- 表情选择器组件 (Web Component) -->
+  <script src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.22.1/index.js" type="module"></script>
+  <style>
+    /* ========== 全局样式 ========== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #f0f2f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
+    #app { height: 100%; display: flex; flex-direction: column; }
+
+    /* 登录界面 */
+    .login-container { display: flex; align-items: center; justify-content: center; height: 100vh; background: #f0f2f5; padding: 20px; }
+    .login-box { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 32px 24px; width: 100%; max-width: 400px; }
+    .login-box h2 { text-align: center; margin-bottom: 24px; color: #07c160; font-size: 24px; }
+    .login-box input { width: 100%; padding: 12px 16px; border: 1px solid #e0e0e0; border-radius: 24px; margin-bottom: 16px; font-size: 16px; outline: none; }
+    .login-box input:focus { border-color: #07c160; box-shadow: 0 0 0 2px rgba(7,193,96,0.1); }
+    .login-box button { width: 100%; background: #07c160; color: white; border: none; border-radius: 28px; padding: 14px; font-size: 18px; cursor: pointer; transition: background 0.2s; }
+    .login-box button:hover { background: #06a050; }
+    .login-error { color: #ff4d4f; text-align: center; margin-top: 12px; }
+
+    /* 主布局 */
+    .main-layout { display: flex; flex-direction: column; height: 100%; max-width: 1200px; margin: 0 auto; width: 100%; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
+    .content-area { flex: 1; overflow-y: auto; background: #f5f7fa; }
+    .bottom-nav { display: flex; border-top: 1px solid #ddd; background: #f9f9f9; height: 56px; }
+    .bottom-nav button { flex: 1; border: none; background: none; font-size: 14px; cursor: pointer; color: #666; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 2px; transition: 0.3s; }
+    .bottom-nav button.active { color: #07c160; font-weight: 500; }
+
+    /* 公共列表样式 */
+    .list-header { padding: 16px; background: white; border-bottom: 1px solid #eee; font-weight: 600; font-size: 16px; position: relative; }
+    .chat-item, .friend-item, .request-item, .group-item { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; background: white; transition: background 0.2s; position: relative; }
+    .chat-item:hover, .friend-item:hover, .group-item:hover { background: #f5f5f5; }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 500; flex-shrink: 0; background-size: cover; background-position: center; }
+    .avatar.private { background-color: #07c160; color: white; }
+    .avatar.group { background-color: #f9a825; color: white; }
+    .avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+    .chat-info { margin-left: 12px; flex: 1; min-width: 0; }
+    .chat-name { font-weight: 500; color: #333; display: flex; align-items: center; gap: 6px; }
+    .chat-last-msg { font-size: 13px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
+    .no-data { padding: 40px; text-align: center; color: #999; }
+    .unread-badge { background: #ff4d4f; color: white; border-radius: 10px; min-width: 20px; height: 20px; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; margin-left: 8px; }
+
+    /* 聊天详情 */
+    .chat-detail { display: flex; flex-direction: column; height: 100%; background: #f0f2f5; }
+    .detail-header { display: flex; align-items: center; padding: 10px 16px; background: white; border-bottom: 1px solid #eee; }
+    .back-btn { background: #f0f0f0; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 20px; margin-right: 12px; cursor: pointer; color: #07c160; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+    .back-btn:hover { background: #e0e0e0; }
+    .detail-header .avatar { margin-right: 8px; }
+    .messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; }
+    .message-wrapper { display: flex; margin-bottom: 16px; max-width: 80%; align-items: flex-start; }
+    .message-wrapper.own { align-self: flex-end; flex-direction: row-reverse; }
+    .message-avatar { width: 36px; height: 36px; margin-right: 8px; align-self: flex-start; }
+    .own .message-avatar { margin-left: 8px; margin-right: 0; }
+    .bubble { background: white; padding: 8px 12px; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); word-wrap: break-word; max-width: 100%; position: relative; }
+    .own .bubble { background: #95ec69; }
+    .message-image { max-width: 200px; max-height: 200px; border-radius: 8px; cursor: pointer; }
+    .message-audio { max-width: 250px; height: 40px; }
+    .message-video { max-width: 250px; border-radius: 8px; }
+    .file-link { color: #07c160; text-decoration: none; }
+    .time { font-size: 0.7em; color: #999; text-align: right; margin-top: 4px; }
+    /* 撤回消息样式 */
+    .recalled-message { background: transparent !important; color: #aaa; font-size: 13px; font-style: italic; box-shadow: none; }
+    .recalled-message .time { color: #ccc; }
+    .recall-actions { display: flex; gap: 8px; margin-top: 4px; font-size: 12px; }
+    .recall-actions button { background: none; border: none; color: #07c160; cursor: pointer; text-decoration: underline; }
+    .recall-btn { background: transparent; border: none; font-size: 1.2rem; margin-left: 4px; cursor: pointer; opacity: 0.7; }
+
+    /* 输入区域 - 恢复原始样式 */
+    .input-area { background: white; border-top: 1px solid #ddd; padding: 8px 12px; }
+    .input-row { display: flex; align-items: flex-end; gap: 8px; }
+    .message-input { 
+      flex: 1;
+      padding: 8px 12px; 
+      border: 1px solid #ccc; 
+      border-radius: 20px; 
+      outline: none; 
+      font-size: 16px; 
+      resize: vertical; 
+      min-height: 40px; 
+      max-height: 100px; 
+      line-height: 1.4; 
+      background: #f5f5f5;
+    }
+    .message-input:focus { border-color: #07c160; background: white; }
+    .action-buttons { display: flex; align-items: center; gap: 4px; }
+    .action-btn { background: transparent; border: none; font-size: 1.8rem; line-height: 1; padding: 0; cursor: pointer; color: #666; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; transition: background 0.2s; }
+    .action-btn:hover { background: #f0f0f0; }
+    .send-btn { background: #07c160; color: white; border: none; border-radius: 24px; padding: 10px 20px; font-size: 16px; font-weight: 500; cursor: pointer; box-shadow: 0 2px 5px rgba(7,193,96,0.3); transition: background 0.2s; }
+    .send-btn:hover { background: #06a050; }
+    .more-panel { background: white; border-top: 1px solid #eee; padding: 12px; display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-top: 8px; }
+    .more-item { display: flex; flex-direction: column; align-items: center; width: 60px; cursor: pointer; }
+    .more-item span { font-size: 12px; margin-top: 4px; color: #333; }
+    .more-icon { font-size: 28px; }
+
+    /* 表情选择器容器 */
+    .emoji-picker-container { display: flex; justify-content: center; margin-top: 8px; }
+    .emoji-picker-container emoji-picker { width: 100%; max-width: 400px; max-height: 300px; }
+
+    /* 快捷回复面板 */
+    .quick-reply-panel { background: white; border-top: 1px solid #ddd; max-height: 300px; overflow-y: auto; padding: 12px; }
+    .reply-category { margin-bottom: 12px; }
+    .category-title { font-weight: bold; color: #666; margin-bottom: 4px; }
+    .reply-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; cursor: pointer; border-radius: 18px; background: #f5f5f5; margin-bottom: 4px; }
+    .reply-item:hover { background: #e0e0e0; }
+    .delete-reply-btn { background: none; border: none; cursor: pointer; opacity: 0.5; }
+
+    /* 定时面板 */
+    .schedule-panel { background: white; border-top: 1px solid #ddd; padding: 12px; max-height: 400px; overflow-y: auto; }
+    .schedule-form { display: flex; flex-direction: column; gap: 12px; }
+    .schedule-form textarea, .schedule-form input, .schedule-form select { padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+    .time-config { display: flex; gap: 8px; align-items: center; }
+    .time-config input { width: 80px; }
+    .panel-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+    /* 通讯录折叠面板 */
+    .contacts-container { padding: 16px; background: #f5f7fa; }
+    .section-header { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 12px 0; border-bottom: 1px solid #eee; }
+    .section-header h3 { margin: 0; font-size: 16px; color: #333; }
+    .section-header .toggle-icon { font-size: 18px; color: #999; }
+    .section-content { overflow: hidden; transition: max-height 0.3s ease; }
+    .section-content.collapsed { display: none; }
+    .friend-actions { display: flex; gap: 6px; }
+    .friend-actions button { background: #07c160; color: white; border: none; border-radius: 16px; padding: 4px 12px; font-size: 12px; cursor: pointer; transition: background 0.2s; }
+    .friend-actions button:hover { background: #06a050; }
+    .friend-actions .decline { background: #ff4d4f; }
+    .friend-actions .decline:hover { background: #e04444; }
+    .friend-actions .pending { background: #ffc107; color: #333; }
+    .friend-actions .added { background: white; border: 1px solid #07c160; color: #07c160; border-radius: 16px; padding: 4px 12px; font-size: 12px; cursor: default; }
+    .friend-actions .remark-btn { background: #e0e0e0; color: #333; }
+
+    /* 群聊创建 */
+    .create-group-btn { background: #07c160; color: white; border: none; border-radius: 20px; padding: 8px 16px; margin: 10px 16px; cursor: pointer; transition: background 0.2s; }
+    .create-group-btn:hover { background: #06a050; }
+    .member-selection { background: white; border-radius: 8px; padding: 12px; margin: 8px 16px; }
+    .member-item { display: flex; align-items: center; padding: 8px; }
+    .member-item input { margin-right: 8px; }
+
+    /* 图书馆和个人样式 */
+    .library-container, .profile-container { padding: 16px; background: #f5f7fa; }
+    .library-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .default-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-bottom: 24px; }
+    .link-item { display: block; padding: 10px; background: #f0f0f0; border-radius: 8px; text-align: center; text-decoration: none; color: #333; font-size: 14px; }
+    .bookmark-wrapper { display: flex; align-items: center; background: white; border: 1px solid #eee; border-radius: 8px; margin-bottom: 8px; }
+    .bookmark-wrapper .link-item { flex: 1; background: none; border: none; text-align: left; }
+    .item-actions button { background: none; border: none; padding: 8px; cursor: pointer; color: #999; }
+    .profile-header { display: flex; flex-direction: column; align-items: center; background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; text-align: center; }
+    .profile-header .avatar { width: 64px; height: 64px; font-size: 24px; margin-bottom: 12px; }
+    .profile-info h3 { margin-bottom: 4px; }
+    .profile-info p { color: #666; font-size: 13px; }
+    .edit-btn { background: #07c160; color: white; border: none; border-radius: 20px; padding: 6px 12px; cursor: pointer; margin-top: 10px; transition: background 0.2s; }
+    .edit-btn:hover { background: #06a050; }
+
+    /* 个人设置面板居中 */
+    .section { background: white; border-radius: 12px; padding: 20px; margin: 0 auto 20px; max-width: 400px; }
+    .section h3 { margin-bottom: 12px; }
+    .section input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; }
+    .section button { width: 100%; background: #07c160; color: white; border: none; border-radius: 28px; padding: 12px; font-size: 16px; cursor: pointer; transition: background 0.2s; }
+    .section button:hover { background: #06a050; }
+    .logout-btn { display: block; width: 50%; max-width: 200px; margin: 0 auto; background: #ff4d4f; color: white; border: none; border-radius: 28px; padding: 12px; font-size: 16px; cursor: pointer; transition: background 0.2s; }
+    .logout-btn:hover { background: #e04444; }
+
+    /* 移除会话按钮 */
+    .remove-session { background: none; border: none; color: #999; font-size: 18px; cursor: pointer; padding: 0 8px; }
+
+    /* 模态框 */
+    .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal-content { background: white; padding: 24px; border-radius: 12px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .modal-actions button { padding: 8px 20px; border: none; border-radius: 20px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
+    .modal-actions button:first-child { background: #07c160; color: white; }
+    .modal-actions button:first-child:hover { background: #06a050; }
+    .modal-actions button:last-child { background: #f0f0f0; color: #333; }
+    .modal-actions button:last-child:hover { background: #e0e0e0; }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+
+<script type="module">
+  // ---------- CouchDB 配置 ----------
+  const COUCHDB_URL = 'http://satoko:1793364876@localhost:5984'; // 您的CouchDB地址（已包含认证）
+
+  // ---------- 数据库工厂 ----------
+  const createDB = (name) => {
+    const localDB = new PouchDB(name);
+    if (COUCHDB_URL) {
+      const remoteDB = new PouchDB(`${COUCHDB_URL}/${name}`);
+      localDB.sync(remoteDB, { live: true, retry: true }).on('error', console.warn);
+    }
+    return localDB;
+  };
+
+  // 数据库实例
+  const employeesDB = createDB('employees');
+  const friendsDB = createDB('friends');
+  const groupsDB = createDB('groups');
+  const groupMembersDB = createDB('groupmembers');
+  const messagesDB = createDB('messages');
+  const groupMessagesDB = createDB('groupmessages');
+  const bookmarksDB = createDB('bookmarks');
+  const quickRepliesDB = createDB('quickreplies');
+  const scheduledDB = createDB('scheduled');
+  const sessionsDB = createDB('sessions');
+  const groupSessionsDB = createDB('groupsessions');
+
+  // 默认员工数据
+  const defaultEmployees = [
+    { _id: '管理员', username: '管理员', password: '2026', nickname: '管理员', email: 'admin@example.com', avatar: '' },
+    { _id: '李老师', username: '李老师', password: '2025', nickname: '李老师', email: 'li@example.com', avatar: '' },
+    { _id: '张老师', username: '张老师', password: '2025', nickname: '张老师', email: 'zhang@example.com', avatar: '' },
+    { _id: '王老师', username: '王老师', password: '2025', nickname: '王老师', email: 'wang@example.com', avatar: '' },
+    { _id: '赵老师', username: '赵老师', password: '2025', nickname: '赵老师', email: 'zhao@example.com', avatar: '' },
+    { _id: '刘老师', username: '刘老师', password: '2025', nickname: '刘老师', email: 'liu@example.com', avatar: '' },
+  ];
+
+  // 初始化员工表
+  employeesDB.allDocs().then(result => {
+    if (result.total_rows === 0) {
+      defaultEmployees.forEach(emp => employeesDB.put(emp).catch(console.warn));
+    }
+  }).catch(console.error);
+
+  // ---------- 全局状态 ----------
+  let currentUser = null;
+  let currentTab = 'chat';
+  let selectedFriend = null;
+  let activeSessions = [];
+  let quickReplies = [];
+  let scheduledList = [];
+
+  // 折叠状态
+  const collapseState = {
+    newFriends: true,
+    myFriends: false,
+    allEmployees: false,
+    groups: false
+  };
+
+  const app = document.getElementById('app');
+  let syncHandler = null;
+
+  // ---------- 实时同步设置（修复版）----------
+  function setupRealtimeSync() {
+    if (!currentUser) return;
+    
+    // 清除之前的监听
+    if (syncHandler) {
+      syncHandler.cancel();
+    }
+
+    // 监听所有相关数据库的变化
+    const dbs = [messagesDB, groupMessagesDB, sessionsDB, groupSessionsDB, friendsDB, groupsDB, groupMembersDB];
+    
+    const changes = dbs.map(db => {
+      return db.changes({
+        since: 'now',
+        live: true,
+        include_docs: true
+      }).on('change', (change) => {
+        // 使用 requestAnimationFrame 避免频繁刷新
+        requestAnimationFrame(() => {
+          refreshCurrentView();
+        });
+      }).on('error', (err) => {
+        console.warn('同步错误:', err);
+      });
+    });
+    
+    syncHandler = { cancel: () => changes.forEach(c => c.cancel()) };
+  }
+
+  // 刷新当前视图
+  async function refreshCurrentView() {
+    const content = document.getElementById('content-area');
+    if (!content) return;
+    
+    if (currentTab === 'chat') {
+      if (selectedFriend) {
+        if (selectedFriend.type === 'private') {
+          await renderPrivateChat(content, selectedFriend);
+        } else {
+          await renderGroupChat(content, selectedFriend);
+        }
+      } else {
+        await renderChatList(content);
+      }
+    } else if (currentTab === 'contacts') {
+      await renderContacts(content);
+    } else if (currentTab === 'library') {
+      await renderLibrary(content);
+    } else if (currentTab === 'profile') {
+      await renderProfile(content);
+    }
+  }
+
+  // ---------- 辅助函数 ----------
+  async function loadAllSessions() {
+    if (!currentUser) return;
+    const privateResult = await sessionsDB.allDocs({ include_docs: true });
+    const privateSessions = privateResult.rows
+      .map(r => r.doc)
+      .filter(s => s.userId === currentUser._id && s.visible !== false)
+      .map(s => ({ ...s, type: 'private' }));
+    const groupResult = await groupSessionsDB.allDocs({ include_docs: true });
+    const groupSessions = groupResult.rows
+      .map(r => r.doc)
+      .filter(s => s.userId === currentUser._id && s.visible !== false)
+      .map(s => ({ ...s, type: 'group' }));
+    activeSessions = [...privateSessions, ...groupSessions].sort((a, b) => (b.lastMsgTime || 0) - (a.lastMsgTime || 0));
+  }
+
+  async function loadQuickReplies() {
+    if (!currentUser) return;
+    const result = await quickRepliesDB.allDocs({ include_docs: true });
+    quickReplies = result.rows.map(r => r.doc).filter(q => q.userId === currentUser._id);
+  }
+
+  async function loadScheduled() {
+    if (!currentUser) return;
+    const result = await scheduledDB.allDocs({ include_docs: true });
+    scheduledList = result.rows.map(r => r.doc).filter(s => s.userId === currentUser._id);
+    checkScheduled();
+  }
+
+  function checkScheduled() {
+    const now = Date.now();
+    scheduledList.forEach(async (item) => {
+      if (item.executeAt <= now && !item.executed) {
+        try {
+          if (item.isGroup) {
+            await sendGroupMessageInternal(item.groupId, item.text, null, 'text');
+          } else {
+            await sendPrivateMessageInternal(item.recipient, item.text, null, 'text');
+          }
+          item.executed = true;
+          await scheduledDB.put(item);
+        } catch (e) {
+          console.error('定时消息发送失败', e);
+        }
+      }
+    });
+  }
+  setInterval(checkScheduled, 60000);
+
+  async function sendPrivateMessageInternal(recipientId, text, file, fileType) {
+    const msg = {
+      _id: `msg_${currentUser._id}_${recipientId}_${Date.now()}_${Math.random()}`,
+      sender: currentUser._id,
+      recipient: recipientId,
+      text: text || '',
+      type: fileType || 'text',
+      timestamp: Date.now(),
+      recalled: false
+    };
+    if (file) {
+      const attachmentName = `file_${Date.now()}`;
+      const result = await messagesDB.put(msg);
+      await messagesDB.putAttachment(result.id, attachmentName, result.rev, file, file.type);
+      msg._attachments = { [attachmentName]: { content_type: file.type } };
+    } else {
+      await messagesDB.put(msg);
+    }
+
+    await updatePrivateSession(recipientId, text || '[文件]', Date.now(), false);
+
+    if (recipientId !== currentUser._id) {
+      const recipientSessionId = `session_${recipientId}_${currentUser._id}`;
+      try {
+        let recipientSession = await sessionsDB.get(recipientSessionId).catch(() => null);
+        if (recipientSession) {
+          recipientSession.lastMsg = text || '[文件]';
+          recipientSession.lastMsgTime = Date.now();
+          recipientSession.unreadCount = (recipientSession.unreadCount || 0) + 1;
+          recipientSession.visible = true;
+          await sessionsDB.put(recipientSession);
+        } else {
+          const friend = await employeesDB.get(currentUser._id).catch(() => null);
+          if (friend) {
+            recipientSession = {
+              _id: recipientSessionId,
+              userId: recipientId,
+              friendId: currentUser._id,
+              remark: friend.nickname || friend.username,
+              avatar: friend.avatar || '',
+              lastMsg: text || '[文件]',
+              lastMsgTime: Date.now(),
+              visible: true,
+              unreadCount: 1
+            };
+            await sessionsDB.put(recipientSession);
+          }
+        }
+      } catch (e) {
+        console.warn('更新接收方会话失败', e);
+      }
+    }
+    return msg;
+  }
+
+  async function updatePrivateSession(friendId, lastMsg, lastTime, incrementUnread = false) {
+    const sessionId = `session_${currentUser._id}_${friendId}`;
+    try {
+      let session = await sessionsDB.get(sessionId).catch(() => null);
+      if (session) {
+        session.lastMsg = lastMsg;
+        session.lastMsgTime = lastTime;
+        session.visible = true;
+        if (incrementUnread) {
+          session.unreadCount = (session.unreadCount || 0) + 1;
+        }
+        await sessionsDB.put(session);
+      } else {
+        const friend = await employeesDB.get(friendId).catch(() => null);
+        if (friend) {
+          session = {
+            _id: sessionId,
+            userId: currentUser._id,
+            friendId,
+            remark: friend.nickname || friend.username,
+            avatar: friend.avatar || '',
+            lastMsg,
+            lastMsgTime: lastTime,
+            visible: true,
+            unreadCount: incrementUnread ? 1 : 0
+          };
+          await sessionsDB.put(session);
+        }
+      }
+    } catch (e) {
+      console.warn('更新私聊会话失败', e);
+    }
+  }
+
+  async function sendGroupMessageInternal(groupId, text, file, fileType) {
+    const msg = {
+      _id: `groupmsg_${groupId}_${Date.now()}_${Math.random()}`,
+      groupId,
+      sender: currentUser._id,
+      text: text || '',
+      type: fileType || 'text',
+      timestamp: Date.now(),
+      recalled: false
+    };
+    if (file) {
+      const attachmentName = `file_${Date.now()}`;
+      const result = await groupMessagesDB.put(msg);
+      await groupMessagesDB.putAttachment(result.id, attachmentName, result.rev, file, file.type);
+      msg._attachments = { [attachmentName]: { content_type: file.type } };
+    } else {
+      await groupMessagesDB.put(msg);
+    }
+
+    const members = await groupMembersDB.allDocs({ include_docs: true }).then(res =>
+      res.rows.map(r => r.doc).filter(m => m.groupId === groupId)
+    );
+    for (let member of members) {
+      if (member.userId === currentUser._id) continue;
+      const groupSessionId = `groupsession_${member.userId}_${groupId}`;
+      try {
+        let session = await groupSessionsDB.get(groupSessionId).catch(() => null);
+        if (session) {
+          session.lastMsg = text || '[文件]';
+          session.lastMsgTime = Date.now();
+          session.unreadCount = (session.unreadCount || 0) + 1;
+          session.visible = true;
+          await groupSessionsDB.put(session);
+        } else {
+          const group = await groupsDB.get(groupId);
+          session = {
+            _id: groupSessionId,
+            userId: member.userId,
+            groupId,
+            groupName: group.name,
+            avatar: group.avatar || '',
+            lastMsg: text || '[文件]',
+            lastMsgTime: Date.now(),
+            visible: true,
+            unreadCount: 1
+          };
+          await groupSessionsDB.put(session);
+        }
+      } catch (e) {
+        console.warn('更新群成员会话失败', e);
+      }
+    }
+
+    const mySessionId = `groupsession_${currentUser._id}_${groupId}`;
+    try {
+      let mySession = await groupSessionsDB.get(mySessionId).catch(() => null);
+      const group = await groupsDB.get(groupId);
+      if (mySession) {
+        mySession.lastMsg = text || '[文件]';
+        mySession.lastMsgTime = Date.now();
+        mySession.visible = true;
+        await groupSessionsDB.put(mySession);
+      } else {
+        mySession = {
+          _id: mySessionId,
+          userId: currentUser._id,
+          groupId,
+          groupName: group.name,
+          avatar: group.avatar || '',
+          lastMsg: text || '[文件]',
+          lastMsgTime: Date.now(),
+          visible: true,
+          unreadCount: 0
+        };
+        await groupSessionsDB.put(mySession);
+      }
+    } catch (e) {
+      console.warn('更新自己群会话失败', e);
+    }
+  }
+
+  async function clearPrivateUnread(friendId) {
+    const sessionId = `session_${currentUser._id}_${friendId}`;
+    try {
+      const session = await sessionsDB.get(sessionId);
+      session.unreadCount = 0;
+      await sessionsDB.put(session);
+    } catch (e) {}
+  }
+
+  async function clearGroupUnread(groupId) {
+    const sessionId = `groupsession_${currentUser._id}_${groupId}`;
+    try {
+      const session = await groupSessionsDB.get(sessionId);
+      session.unreadCount = 0;
+      await groupSessionsDB.put(session);
+    } catch (e) {}
+  }
+
+  function getFriendStatus(relations, targetUserId) {
+    const myId = currentUser._id;
+    const sent = relations.find(r => r.userId === myId && r.friendId === targetUserId);
+    const received = relations.find(r => r.friendId === myId && r.userId === targetUserId);
+    if (sent && sent.status === 'accepted') return 'accepted';
+    if (received && received.status === 'accepted') return 'accepted';
+    if (sent && sent.status === 'pending') return 'pending_sent';
+    if (received && received.status === 'pending') return 'pending_received';
+    return 'none';
+  }
+
+  // ---------- 渲染函数 ----------
+  function renderLogin() {
+    const savedUser = localStorage.getItem('chatUser');
+    if (savedUser) {
+      try {
+        const user = JSON.parse(savedUser);
+        employeesDB.get(user._id).then(doc => {
+          currentUser = doc;
+          loadAllSessions().then(() => {
+            loadQuickReplies();
+            loadScheduled();
+            renderMain();
+            setupRealtimeSync();
+          });
+        }).catch(() => {
+          localStorage.removeItem('chatUser');
+          renderLoginForm();
+        });
+        return;
+      } catch (e) {
+        localStorage.removeItem('chatUser');
+      }
+    }
+    renderLoginForm();
+  }
+
+  function renderLoginForm() {
+    app.innerHTML = `
+      <div class="login-container">
+        <div class="login-box">
+          <h2>知云聊天</h2>
+          <input type="text" id="login-username" placeholder="用户名" autocomplete="off">
+          <input type="password" id="login-password" placeholder="密码">
+          <button id="login-btn">登录</button>
+          <div class="login-error" id="login-error"></div>
+        </div>
+      </div>
+    `;
+    document.getElementById('login-btn').onclick = async () => {
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value.trim();
+
+      // 管理员硬编码检查
+      if (username === '管理员' && password === '2026') {
+        currentUser = { _id: '管理员', username: '管理员', nickname: '管理员', email: 'admin@example.com', avatar: '' };
+        localStorage.setItem('chatUser', JSON.stringify({ _id: currentUser._id, username: currentUser.username }));
+        await loadAllSessions();
+        await loadQuickReplies();
+        await loadScheduled();
+        renderMain();
+        setupRealtimeSync();
+        return;
+      }
+
+      try {
+        const userDoc = await employeesDB.get(username).catch(() => null);
+        if (userDoc && userDoc.password === password) {
+          currentUser = userDoc;
+          localStorage.setItem('chatUser', JSON.stringify({ _id: userDoc._id, username: userDoc.username }));
+          await loadAllSessions();
+          await loadQuickReplies();
+          await loadScheduled();
+          renderMain();
+          setupRealtimeSync();
+        } else {
+          document.getElementById('login-error').textContent = '用户名或密码错误';
+        }
+      } catch (err) {
+        document.getElementById('login-error').textContent = '登录失败';
+      }
+    };
+  }
+
+  function renderMain() {
+    app.innerHTML = `
+      <div class="main-layout">
+        <div class="content-area" id="content-area"></div>
+        <nav class="bottom-nav">
+          <button class="${currentTab === 'chat' ? 'active' : ''}" data-tab="chat">💬 聊天</button>
+          <button class="${currentTab === 'contacts' ? 'active' : ''}" data-tab="contacts">👥 通讯录</button>
+          <button class="${currentTab === 'library' ? 'active' : ''}" data-tab="library">📚 图书馆</button>
+          <button class="${currentTab === 'profile' ? 'active' : ''}" data-tab="profile">👤 我的</button>
+        </nav>
+      </div>
+    `;
+    document.querySelectorAll('.bottom-nav button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        currentTab = e.target.dataset.tab;
+        selectedFriend = null;
+        renderMain();
+      });
+    });
+    renderContent();
+  }
+
+  async function renderContent() {
+    const content = document.getElementById('content-area');
+    if (!content) return;
+    if (currentTab === 'chat') await renderChatList(content);
+    else if (currentTab === 'contacts') await renderContacts(content);
+    else if (currentTab === 'library') await renderLibrary(content);
+    else if (currentTab === 'profile') await renderProfile(content);
+  }
+
+  // 聊天模块
+  async function renderChatList(container) {
+    if (selectedFriend) {
+      if (selectedFriend.type === 'private') {
+        await clearPrivateUnread(selectedFriend.friendId);
+        await renderPrivateChat(container, selectedFriend);
+      } else {
+        await clearGroupUnread(selectedFriend.groupId);
+        await renderGroupChat(container, selectedFriend);
+      }
+      return;
+    }
+    await loadAllSessions();
+    container.innerHTML = `
+      <div class="chat-list">
+        <div class="list-header">消息</div>
+        ${activeSessions.length === 0 ? '<div class="no-data">暂无会话，去通讯录添加好友或创建群聊吧</div>' : ''}
+        <div id="session-list">
+          ${activeSessions.map(s => {
+            const unread = s.unreadCount || 0;
+            const lastMsg = s.lastMsg ? (s.lastMsg.length > 20 ? s.lastMsg.slice(0,20)+'...' : s.lastMsg) : '';
+            const displayName = s.type === 'private' ? (s.remark || s.friendId) : s.groupName;
+            const avatarChar = displayName ? displayName[0] : '#';
+            return `
+            <div class="chat-item" data-session='${JSON.stringify(s)}'>
+              <div class="avatar ${s.type === 'private' ? 'private' : 'group'}" style="${s.avatar ? `background-image: url(${s.avatar})` : ''}">${!s.avatar ? (s.type === 'private' ? avatarChar : '群') : ''}</div>
+              <div class="chat-info">
+                <div class="chat-name">
+                  ${displayName} ${s.type === 'group' ? '（群）' : ''}
+                  ${unread > 0 ? `<span class="unread-badge">${unread}</span>` : ''}
+                </div>
+                <div class="chat-last-msg">${lastMsg}</div>
+              </div>
+              <button class="remove-session" data-sessionid="${s._id}" data-type="${s.type}">✕</button>
+            </div>
+          `}).join('')}
+        </div>
+      </div>
+    `;
+
+    document.querySelectorAll('.chat-item').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove-session')) return;
+        const session = JSON.parse(el.dataset.session);
+        if (session.type === 'private') {
+          selectedFriend = { type: 'private', friendId: session.friendId, remark: session.remark, avatar: session.avatar };
+        } else {
+          selectedFriend = { type: 'group', groupId: session.groupId, groupName: session.groupName, avatar: session.avatar };
+        }
+        renderContent();
+      });
+    });
+
+    document.querySelectorAll('.remove-session').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const sessionId = btn.dataset.sessionid;
+        const type = btn.dataset.type;
+        try {
+          if (type === 'private') {
+            const session = await sessionsDB.get(sessionId);
+            session.visible = false;
+            await sessionsDB.put(session);
+          } else {
+            const session = await groupSessionsDB.get(sessionId);
+            session.visible = false;
+            await groupSessionsDB.put(session);
+          }
+          await loadAllSessions();
+          renderChatList(container);
+        } catch (err) {
+          console.warn(err);
+        }
+      });
+    });
+  }
+
+  async function renderPrivateChat(container, friend) {
+    const messages = await messagesDB.allDocs({
+      include_docs: true,
+      startkey: `msg_${currentUser._id}_${friend.friendId}_`,
+      endkey: `msg_${currentUser._id}_${friend.friendId}_\uffff`
+    }).then(res => res.rows.map(r => r.doc).sort((a,b) => a.timestamp - b.timestamp));
+
+    const friendUser = await employeesDB.get(friend.friendId).catch(() => null);
+    const friendAvatar = friendUser?.avatar || '';
+    const friendName = friend.remark || friend.friendId;
+
+    container.innerHTML = `
+      <div class="chat-detail">
+        <div class="detail-header">
+          <button class="back-btn" id="back-btn">←</button>
+          <div class="avatar private" style="background-image: url(${friendAvatar}); background-size: cover;">${!friendAvatar ? (friendName[0] || '') : ''}</div>
+          <h3>${friendName}</h3>
+        </div>
+        <div class="messages" id="message-list">
+          ${messages.map(msg => renderPrivateMessage(msg, friend, friendUser)).join('')}
+        </div>
+        <div class="input-area">
+          <div class="input-row">
+            <textarea id="msg-input" class="message-input" placeholder="输入消息" rows="1"></textarea>
+            <div class="action-buttons">
+              <button class="action-btn" id="emoji-btn">😊</button>
+              <button class="action-btn" id="more-btn">➕</button>
+              <button class="send-btn" id="send-btn">发送</button>
+            </div>
+          </div>
+          <div id="emoji-picker" class="emoji-picker-container" style="display:none;"></div>
+          <div id="more-panel" class="more-panel" style="display:none;">
+            <div class="more-item" id="file-more">
+              <span class="more-icon">📎</span>
+              <span>文件</span>
+            </div>
+            <div class="more-item" id="quick-reply-more">
+              <span class="more-icon">💬</span>
+              <span>快捷回复</span>
+            </div>
+            <div class="more-item" id="schedule-more">
+              <span class="more-icon">⏰</span>
+              <span>定时</span>
+            </div>
+          </div>
+          <div id="quick-reply-panel" class="quick-reply-panel" style="display:none;"></div>
+          <div id="schedule-panel" class="schedule-panel" style="display:none;"></div>
+          <input type="file" id="file-input" style="display:none;" accept="image/*,audio/*,video/*,.pdf,.doc,.docx">
+        </div>
+      </div>
+    `;
+
+    attachChatEvents(container, friend, 'private');
+  }
+
+  async function renderGroupChat(container, group) {
+    const messages = await groupMessagesDB.allDocs({
+      include_docs: true,
+      startkey: `groupmsg_${group.groupId}_`,
+      endkey: `groupmsg_${group.groupId}_\uffff`
+    }).then(res => res.rows.map(r => r.doc).sort((a,b) => a.timestamp - b.timestamp));
+
+    const groupInfo = await groupsDB.get(group.groupId).catch(() => ({ name: '群聊', avatar: '' }));
+    const groupAvatar = groupInfo.avatar || '';
+    const groupName = groupInfo.name;
+
+    const members = await groupMembersDB.allDocs({ include_docs: true }).then(res =>
+      res.rows.map(r => r.doc).filter(m => m.groupId === group.groupId)
+    );
+    const memberMap = {};
+    for (let m of members) {
+      const user = await employeesDB.get(m.userId).catch(() => null);
+      if (user) memberMap[m.userId] = { nickname: user.nickname || user.username, avatar: user.avatar };
+    }
+
+    container.innerHTML = `
+      <div class="chat-detail">
+        <div class="detail-header">
+          <button class="back-btn" id="back-btn">←</button>
+          <div class="avatar group" style="background-image: url(${groupAvatar}); background-size: cover;">${!groupAvatar ? '群' : ''}</div>
+          <h3>${groupName}（群）</h3>
+        </div>
+        <div class="messages" id="message-list">
+          ${messages.map(msg => renderGroupMessage(msg, memberMap)).join('')}
+        </div>
+        <div class="input-area">
+          <div class="input-row">
+            <textarea id="msg-input" class="message-input" placeholder="输入消息" rows="1"></textarea>
+            <div class="action-buttons">
+              <button class="action-btn" id="emoji-btn">😊</button>
+              <button class="action-btn" id="more-btn">➕</button>
+              <button class="send-btn" id="send-btn">发送</button>
+            </div>
+          </div>
+          <div id="emoji-picker" class="emoji-picker-container" style="display:none;"></div>
+          <div id="more-panel" class="more-panel" style="display:none;">
+            <div class="more-item" id="file-more">
+              <span class="more-icon">📎</span>
+              <span>文件</span>
+            </div>
+            <div class="more-item" id="quick-reply-more">
+              <span class="more-icon">💬</span>
+              <span>快捷回复</span>
+            </div>
+            <div class="more-item" id="schedule-more">
+              <span class="more-icon">⏰</span>
+              <span>定时</span>
+            </div>
+          </div>
+          <div id="quick-reply-panel" class="quick-reply-panel" style="display:none;"></div>
+          <div id="schedule-panel" class="schedule-panel" style="display:none;"></div>
+          <input type="file" id="file-input" style="display:none;" accept="image/*,audio/*,video/*,.pdf,.doc,.docx">
+        </div>
+      </div>
+    `;
+
+    attachChatEvents(container, group, 'group');
+  }
+
+  function attachChatEvents(container, target, type) {
+    document.getElementById('back-btn').addEventListener('click', () => {
+      selectedFriend = null;
+      renderContent();
+    });
+
+    const msgInput = document.getElementById('msg-input');
+
+    document.getElementById('send-btn').addEventListener('click', sendText);
+
+    msgInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendText();
+      }
+    });
+
+    async function sendText() {
+      let text = msgInput.value;
+      if (!text.trim()) return;
+      if (type === 'private') {
+        await sendPrivateMessageInternal(target.friendId, text, null, 'text');
+      } else {
+        await sendGroupMessageInternal(target.groupId, text, null, 'text');
+      }
+      msgInput.value = '';
+      if (type === 'private') {
+        renderPrivateChat(container, target);
+      } else {
+        renderGroupChat(container, target);
+      }
+    }
+
+    msgInput.addEventListener('paste', async (e) => {
+      const items = e.clipboardData.items;
+      for (let item of items) {
+        if (item.type.indexOf('image') === 0) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file.size > 2 * 1024 * 1024) {
+            alert('图片超过2MB，请压缩后重试或使用链接发送');
+            return;
+          }
+          if (type === 'private') {
+            await sendPrivateMessageInternal(target.friendId, file.name, file, 'image');
+          } else {
+            await sendGroupMessageInternal(target.groupId, file.name, file, 'image');
+          }
+          if (type === 'private') {
+            renderPrivateChat(container, target);
+          } else {
+            renderGroupChat(container, target);
+          }
+          return;
+        }
+      }
+    });
+
+    const emojiBtn = document.getElementById('emoji-btn');
+    const emojiPickerDiv = document.getElementById('emoji-picker');
+    emojiBtn.addEventListener('click', () => {
+      if (emojiPickerDiv.style.display === 'none') {
+        if (!emojiPickerDiv.children.length) {
+          const picker = document.createElement('emoji-picker');
+          picker.addEventListener('emoji-click', (event) => {
+            msgInput.value += event.detail.unicode;
+            emojiPickerDiv.style.display = 'none';
+          });
+          emojiPickerDiv.appendChild(picker);
+        }
+        emojiPickerDiv.style.display = 'block';
+      } else {
+        emojiPickerDiv.style.display = 'none';
+      }
+    });
+
+    const moreBtn = document.getElementById('more-btn');
+    const morePanel = document.getElementById('more-panel');
+    moreBtn.addEventListener('click', () => {
+      morePanel.style.display = morePanel.style.display === 'none' ? 'flex' : 'none';
+    });
+
+    document.getElementById('file-more').addEventListener('click', () => {
+      document.getElementById('file-input').click();
+    });
+    document.getElementById('file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        const url = prompt('文件超过2MB，请上传至网盘并粘贴分享链接（或直接输入文本）');
+        if (url && url.trim()) {
+          if (type === 'private') {
+            await sendPrivateMessageInternal(target.friendId, url, null, 'text');
+          } else {
+            await sendGroupMessageInternal(target.groupId, url, null, 'text');
+          }
+          if (type === 'private') {
+            renderPrivateChat(container, target);
+          } else {
+            renderGroupChat(container, target);
+          }
+        }
+        return;
+      }
+      let fileType = 'file';
+      if (file.type.startsWith('image/')) fileType = 'image';
+      else if (file.type.startsWith('audio/')) fileType = 'audio';
+      else if (file.type.startsWith('video/')) fileType = 'video';
+      if (type === 'private') {
+        await sendPrivateMessageInternal(target.friendId, file.name, file, fileType);
+      } else {
+        await sendGroupMessageInternal(target.groupId, file.name, file, fileType);
+      }
+      if (type === 'private') {
+        renderPrivateChat(container, target);
+      } else {
+        renderGroupChat(container, target);
+      }
+    });
+
+    document.getElementById('quick-reply-more').addEventListener('click', () => {
+      morePanel.style.display = 'none';
+      const panel = document.getElementById('quick-reply-panel');
+      if (panel.style.display === 'none') {
+        renderQuickReplyPanel(panel, target, container, type);
+      } else {
+        panel.style.display = 'none';
+      }
+    });
+
+    document.getElementById('schedule-more').addEventListener('click', () => {
+      morePanel.style.display = 'none';
+      const panel = document.getElementById('schedule-panel');
+      if (panel.style.display === 'none') {
+        renderSchedulePanel(panel, target, container, type);
+      } else {
+        panel.style.display = 'none';
+      }
+    });
+
+    document.querySelectorAll('.recall-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const msgId = btn.dataset.id;
+        let msg;
+        if (type === 'private') {
+          msg = await messagesDB.get(msgId);
+        } else {
+          msg = await groupMessagesDB.get(msgId);
+        }
+        if (Date.now() - msg.timestamp > 120000) {
+          alert('只能撤回2分钟内的消息');
+          return;
+        }
+        msg.recalled = true;
+        if (type === 'private') {
+          await messagesDB.put(msg);
+        } else {
+          await groupMessagesDB.put(msg);
+        }
+        if (type === 'private') {
+          renderPrivateChat(container, target);
+        } else {
+          renderGroupChat(container, target);
+        }
+      });
+    });
+
+    document.querySelectorAll('.re-edit-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const msgId = btn.dataset.id;
+        let msg;
+        if (type === 'private') {
+          msg = await messagesDB.get(msgId);
+        } else {
+          msg = await groupMessagesDB.get(msgId);
+        }
+        msgInput.value = msg.text;
+        msgInput.focus();
+        try {
+          if (type === 'private') {
+            await messagesDB.remove(msg);
+          } else {
+            await groupMessagesDB.remove(msg);
+          }
+        } catch (e) {}
+        if (type === 'private') {
+          renderPrivateChat(container, target);
+        } else {
+          renderGroupChat(container, target);
+        }
+      });
+    });
+
+    setTimeout(() => {
+      const msgList = document.getElementById('message-list');
+      if (msgList) msgList.scrollTop = msgList.scrollHeight;
+    }, 100);
+  }
+
+  function renderPrivateMessage(msg, friend, friendUser) {
+    if (msg.recalled) {
+      if (msg.sender === currentUser._id) {
+        return `
+          <div class="message-wrapper own">
+            <div class="message-avatar avatar private" style="background-image: url(${currentUser.avatar || ''}); background-size: cover;">${!currentUser.avatar ? (currentUser.nickname?.[0] || currentUser.username[0]) : ''}</div>
+            <div class="bubble recalled-message">
+              <div><i>您撤回了一条消息</i></div>
+              <div class="recall-actions">
+                <button class="re-edit-btn" data-id="${msg._id}">重新编辑</button>
+              </div>
+              <div class="time">${new Date(msg.timestamp).toLocaleTimeString()}</div>
+            </div>
+          </div>
+        `;
+      } else {
+        const senderName = friend.remark || friend.friendId;
+        return `
+          <div class="message-wrapper">
+            <div class="message-avatar avatar private" style="background-image: url(${friendUser?.avatar || ''}); background-size: cover;">${!friendUser?.avatar ? (senderName[0] || '') : ''}</div>
+            <div class="bubble recalled-message">
+              <div><i>${senderName}撤回了一条消息</i></div>
+              <div class="time">${new Date(msg.timestamp).toLocaleTimeString()}</div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    let content = '';
+    if (msg.type === 'text') {
+      content = msg.text.replace(/\n/g, '<br>');
+    } else if (msg.type === 'image') {
+      content = `<img src="#" class="message-image" alt="图片" style="background:#ccc;width:100px;height:100px;">`;
+    } else if (msg.type === 'audio') {
+      content = `<audio controls class="message-audio" src="#"></audio>`;
+    } else if (msg.type === 'video') {
+      content = `<video controls class="message-video" src="#"></video>`;
+    } else if (msg.type === 'file') {
+      content = `<a href="#" download class="file-link">${msg.text}</a>`;
+    }
+    const time = new Date(msg.timestamp).toLocaleTimeString();
+    const isOwn = msg.sender === currentUser._id;
+    const canRecall = isOwn && (Date.now() - msg.timestamp) <= 120000;
+
+    if (isOwn) {
+      return `
+        <div class="message-wrapper own">
+          <div class="message-avatar avatar private" style="background-image: url(${currentUser.avatar || ''}); background-size: cover;">${!currentUser.avatar ? (currentUser.nickname?.[0] || currentUser.username[0]) : ''}</div>
+          <div class="bubble">
+            <div>${content}</div>
+            <div class="time">${time}</div>
+          </div>
+          ${canRecall ? `<button class="recall-btn" data-id="${msg._id}">↩️</button>` : ''}
+        </div>
+      `;
+    } else {
+      const senderName = friend.remark || friend.friendId;
+      return `
+        <div class="message-wrapper">
+          <div class="message-avatar avatar private" style="background-image: url(${friendUser?.avatar || ''}); background-size: cover;">${!friendUser?.avatar ? (senderName[0] || '') : ''}</div>
+          <div class="bubble">
+            <div>${content}</div>
+            <div class="time">${time}</div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  function renderGroupMessage(msg, memberMap) {
+    const senderInfo = memberMap[msg.sender] || { nickname: msg.sender, avatar: '' };
+    const senderName = senderInfo.nickname;
+    if (msg.recalled) {
+      if (msg.sender === currentUser._id) {
+        return `
+          <div class="message-wrapper own">
+            <div class="message-avatar avatar private" style="background-image: url(${currentUser.avatar || ''}); background-size: cover;">${!currentUser.avatar ? (currentUser.nickname?.[0] || currentUser.username[0]) : ''}</div>
+            <div class="bubble recalled-message">
+              <div><i>您撤回了一条消息</i></div>
+              <div class="recall-actions">
+                <button class="re-edit-btn" data-id="${msg._id}">重新编辑</button>
+              </div>
+              <div class="time">${new Date(msg.timestamp).toLocaleTimeString()}</div>
+            </div>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="message-wrapper">
+            <div class="message-avatar avatar private" style="background-image: url(${senderInfo.avatar || ''}); background-size: cover;">${!senderInfo.avatar ? (senderName[0] || '') : ''}</div>
+            <div class="bubble recalled-message">
+              <div><i>${senderName}撤回了一条消息</i></div>
+              <div class="time">${new Date(msg.timestamp).toLocaleTimeString()}</div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    let content = '';
+    if (msg.type === 'text') {
+      content = msg.text.replace(/\n/g, '<br>');
+    } else if (msg.type === 'image') {
+      content = `<img src="#" class="message-image" alt="图片" style="background:#ccc;width:100px;height:100px;">`;
+    } else if (msg.type === 'audio') {
+      content = `<audio controls class="message-audio" src="#"></audio>`;
+    } else if (msg.type === 'video') {
+      content = `<video controls class="message-video" src="#"></video>`;
+    } else if (msg.type === 'file') {
+      content = `<a href="#" download class="file-link">${msg.text}</a>`;
+    }
+    const time = new Date(msg.timestamp).toLocaleTimeString();
+    const isOwn = msg.sender === currentUser._id;
+    const canRecall = isOwn && (Date.now() - msg.timestamp) <= 120000;
+
+    if (isOwn) {
+      return `
+        <div class="message-wrapper own">
+          <div class="message-avatar avatar private" style="background-image: url(${currentUser.avatar || ''}); background-size: cover;">${!currentUser.avatar ? (currentUser.nickname?.[0] || currentUser.username[0]) : ''}</div>
+          <div class="bubble">
+            <div>${content}</div>
+            <div class="time">${time}</div>
+          </div>
+          ${canRecall ? `<button class="recall-btn" data-id="${msg._id}">↩️</button>` : ''}
+        </div>
+      `;
+    } else {
+      return `
+        <div class="message-wrapper">
+          <div class="message-avatar avatar private" style="background-image: url(${senderInfo.avatar || ''}); background-size: cover;">${!senderInfo.avatar ? (senderName[0] || '') : ''}</div>
+          <div class="bubble">
+            <div>${content}</div>
+            <div class="time">${time}</div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  async function renderQuickReplyPanel(panel, target, container, type) {
+    await loadQuickReplies();
+    const grouped = quickReplies.reduce((acc, r) => {
+      (acc[r.category] = acc[r.category] || []).push(r);
+      return acc;
+    }, {});
+    panel.innerHTML = `
+      <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+        <span>快捷回复</span>
+        <button class="create-group-btn" id="add-quick-reply">+新增</button>
+        <button class="decline" id="close-quick">✕</button>
+      </div>
+      <div id="reply-list">
+        ${Object.entries(grouped).map(([cat, replies]) => `
+          <div class="reply-category">
+            <div class="category-title">${cat}</div>
+            ${replies.map(r => `
+              <div class="reply-item" data-text="${r.text}">
+                <span>${r.text}</span>
+                <button class="delete-reply-btn" data-id="${r._id}">🗑️</button>
+              </div>
+            `).join('')}
+          </div>
+        `).join('')}
+      </div>
+    `;
+    panel.style.display = 'block';
+    document.getElementById('close-quick').onclick = () => { panel.style.display = 'none'; };
+    document.getElementById('add-quick-reply').onclick = async () => {
+      const category = prompt('输入分类');
+      const text = prompt('输入回复内容');
+      if (category && text) {
+        await quickRepliesDB.put({
+          _id: `qr_${currentUser._id}_${Date.now()}`,
+          userId: currentUser._id,
+          category,
+          text
+        });
+        await loadQuickReplies();
+        renderQuickReplyPanel(panel, target, container, type);
+      }
+    };
+    document.querySelectorAll('.reply-item').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.classList.contains('delete-reply-btn')) return;
+        const text = el.dataset.text;
+        document.getElementById('msg-input').value += text;
+        panel.style.display = 'none';
+      });
+    });
+    document.querySelectorAll('.delete-reply-btn').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const doc = await quickRepliesDB.get(id);
+        await quickRepliesDB.remove(doc);
+        await loadQuickReplies();
+        renderQuickReplyPanel(panel, target, container, type);
+      };
+    });
+  }
+
+  async function renderSchedulePanel(panel, target, container, type) {
+    await loadScheduled();
+    panel.innerHTML = `
+      <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+        <span>定时消息</span>
+        <button class="decline" id="close-schedule">✕</button>
+      </div>
+      <div class="schedule-form">
+        <textarea id="schedule-text" placeholder="消息内容" rows="2"></textarea>
+        <div class="time-config">
+          <input type="number" id="schedule-value" min="1" value="1">
+          <select id="schedule-unit">
+            <option value="minutes">分钟</option>
+            <option value="hours">小时</option>
+            <option value="days">天</option>
+          </select>
+        </div>
+        <div class="panel-actions">
+          <button class="create-group-btn" id="schedule-send">确认</button>
+          <button class="decline" id="schedule-cancel">取消</button>
+        </div>
+      </div>
+      <div id="scheduled-list">
+        <h4>我的定时</h4>
+        ${scheduledList.filter(s => !s.executed).map(s => `
+          <div style="display:flex; justify-content:space-between; align-items:center; margin:4px 0;">
+            <span>${new Date(s.executeAt).toLocaleString()}: ${s.text}</span>
+            <button class="delete-reply-btn" data-id="${s._id}">🗑️</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    panel.style.display = 'block';
+    document.getElementById('close-schedule').onclick = () => { panel.style.display = 'none'; };
+    document.getElementById('schedule-send').onclick = async () => {
+      const text = document.getElementById('schedule-text').value.trim();
+      if (!text) return;
+      const value = parseInt(document.getElementById('schedule-value').value);
+      const unit = document.getElementById('schedule-unit').value;
+      let ms = value * 60000;
+      if (unit === 'hours') ms *= 60;
+      if (unit === 'days') ms *= 1440;
+      const maxMs = 3 * 24 * 60 * 60000;
+      if (ms > maxMs) {
+        alert('定时不能超过3天');
+        return;
+      }
+      const executeAt = Date.now() + ms;
+      await scheduledDB.put({
+        _id: `sched_${currentUser._id}_${Date.now()}`,
+        userId: currentUser._id,
+        isGroup: type === 'group',
+        groupId: type === 'group' ? target.groupId : undefined,
+        recipient: type === 'private' ? target.friendId : undefined,
+        text,
+        executeAt,
+        executed: false,
+        file: null,
+        type: 'text'
+      });
+      await loadScheduled();
+      renderSchedulePanel(panel, target, container, type);
+    };
+    document.querySelectorAll('.delete-schedule').forEach(btn => {
+      btn.onclick = async (e) => {
+        const id = btn.dataset.id;
+        const doc = await scheduledDB.get(id);
+        await scheduledDB.remove(doc);
+        await loadScheduled();
+        renderSchedulePanel(panel, target, container, type);
+      };
+    });
+  }
+
+  // ---------- 通讯录 ----------
+  async function renderContacts(container) {
+    const employees = await employeesDB.allDocs({ include_docs: true }).then(res => res.rows.map(r => r.doc));
+    const myId = currentUser._id;
+    const relations = await friendsDB.allDocs({ include_docs: true }).then(res => res.rows.map(r => r.doc));
+
+    const groups = await groupsDB.allDocs({ include_docs: true }).then(res => res.rows.map(r => r.doc));
+    const myGroups = [];
+    for (let g of groups) {
+      const members = await groupMembersDB.allDocs({ include_docs: true }).then(res =>
+        res.rows.map(r => r.doc).filter(m => m.groupId === g._id)
+      );
+      if (members.some(m => m.userId === myId)) {
+        myGroups.push(g);
+      }
+    }
+
+    const pendingReceived = relations.filter(r => r.friendId === myId && r.status === 'pending').map(r => r.userId);
+    const allAccepted = new Set();
+    relations.forEach(r => {
+      if (r.userId === myId && r.status === 'accepted') allAccepted.add(r.friendId);
+      if (r.friendId === myId && r.status === 'accepted') allAccepted.add(r.userId);
+    });
+    const acceptedList = Array.from(allAccepted);
+
+    container.innerHTML = `
+      <div class="contacts-container">
+        <h2>通讯录</h2>
+
+        <div class="section-header" data-section="newFriends">
+          <h3>新朋友</h3>
+          <span class="toggle-icon">${collapseState.newFriends ? '▼' : '▲'}</span>
+        </div>
+        <div class="section-content ${collapseState.newFriends ? '' : 'collapsed'}" id="new-friends-content">
+          ${pendingReceived.length === 0 ? '<div class="no-data">暂无好友请求</div>' : ''}
+          ${pendingReceived.map(friendId => {
+            const user = employees.find(e => e._id === friendId);
+            return `
+              <div class="friend-item" data-friendid="${friendId}">
+                <div class="avatar private">${user ? (user.nickname || user.username)[0] : '?'}</div>
+                <div class="friend-info">
+                  <div class="chat-name">${user ? (user.nickname || user.username) : friendId}</div>
+                  <div class="chat-last-msg">请求添加好友</div>
+                </div>
+                <div class="friend-actions">
+                  <button class="accept-request" data-friendid="${friendId}">同意</button>
+                  <button class="decline" data-friendid="${friendId}">拒绝</button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <div class="section-header" data-section="groups">
+          <h3>群聊</h3>
+          <span class="toggle-icon">${collapseState.groups ? '▼' : '▲'}</span>
+        </div>
+        <div class="section-content ${collapseState.groups ? '' : 'collapsed'}" id="groups-content">
+          <button class="create-group-btn" id="create-group">➕ 创建群聊</button>
+          ${myGroups.length === 0 ? '<div class="no-data">暂无群聊</div>' : ''}
+          ${myGroups.map(g => `
+            <div class="group-item" data-groupid="${g._id}" data-groupname="${g.name}" data-avatar="${g.avatar || ''}">
+              <div class="avatar group" style="${g.avatar ? `background-image: url(${g.avatar})` : ''}">${!g.avatar ? '群' : ''}</div>
+              <div class="chat-info">
+                <div class="chat-name">${g.name}</div>
+                <div class="chat-last-msg">群聊</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="section-header" data-section="myFriends">
+          <h3>我的好友</h3>
+          <span class="toggle-icon">${collapseState.myFriends ? '▼' : '▲'}</span>
+        </div>
+        <div class="section-content ${collapseState.myFriends ? '' : 'collapsed'}" id="my-friends-content">
+          ${acceptedList.length === 0 ? '<div class="no-data">暂无好友</div>' : ''}
+          ${acceptedList.map(friendId => {
+            const user = employees.find(e => e._id === friendId);
+            const myRelation = relations.find(r => r.userId === myId && r.friendId === friendId && r.status === 'accepted');
+            const remark = myRelation?.remark || (user ? (user.nickname || user.username) : friendId);
+            return `
+              <div class="friend-item" data-friendid="${friendId}" data-remark="${remark}">
+                <div class="avatar private">${user ? (user.nickname || user.username)[0] : '?'}</div>
+                <div class="friend-info">
+                  <div class="chat-name">${remark}</div>
+                  <div class="chat-last-msg">${user ? user.email : ''}</div>
+                </div>
+                <div class="friend-actions">
+                  <button class="chat-now">发消息</button>
+                  <button class="remark-btn" data-friendid="${friendId}">备注</button>
+                  <button class="decline" data-friendid="${friendId}">删除</button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <div class="section-header" data-section="allEmployees">
+          <h3>所有员工</h3>
+          <span class="toggle-icon">${collapseState.allEmployees ? '▼' : '▲'}</span>
+        </div>
+        <div class="section-content ${collapseState.allEmployees ? '' : 'collapsed'}" id="all-employees-content">
+          ${employees.filter(e => e._id !== myId).map(emp => {
+            const status = getFriendStatus(relations, emp._id);
+            let buttonHtml = '';
+            if (status === 'accepted') {
+              buttonHtml = `<span class="added">已添加</span>`;
+            } else if (status === 'pending_sent') {
+              buttonHtml = `<span class="pending">已发送</span>`;
+            } else if (status === 'pending_received') {
+              buttonHtml = `<button class="accept-request" data-friendid="${emp._id}">同意</button>`;
+            } else {
+              buttonHtml = `<button class="add-friend" data-friendid="${emp._id}">添加好友</button>`;
+            }
+
+            return `
+              <div class="friend-item" data-friendid="${emp._id}">
+                <div class="avatar private">${(emp.nickname || emp.username)[0]}</div>
+                <div class="friend-info">
+                  <div class="chat-name">${emp.nickname || emp.username}</div>
+                  <div class="chat-last-msg">${emp.email || ''}</div>
+                </div>
+                <div class="friend-actions">
+                  ${buttonHtml}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+
+    document.querySelectorAll('.section-header').forEach(header => {
+      header.addEventListener('click', () => {
+        const section = header.dataset.section;
+        collapseState[section] = !collapseState[section];
+        renderContacts(container);
+      });
+    });
+
+    document.getElementById('create-group')?.addEventListener('click', () => {
+      showCreateGroupModal(container);
+    });
+
+    document.querySelectorAll('.group-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const groupId = el.dataset.groupid;
+        const groupName = el.dataset.groupname;
+        const avatar = el.dataset.avatar;
+        selectedFriend = { type: 'group', groupId, groupName, avatar };
+        currentTab = 'chat';
+        renderMain();
+      });
+    });
+
+    document.querySelectorAll('.accept-request').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const friendId = btn.dataset.friendid;
+        const relation = relations.find(r => r.friendId === myId && r.userId === friendId && r.status === 'pending');
+        if (relation) {
+          relation.status = 'accepted';
+          await friendsDB.put(relation);
+          await friendsDB.put({
+            _id: `friend_${myId}_${friendId}_${Date.now()}`,
+            userId: myId,
+            friendId,
+            status: 'accepted',
+            remark: null,
+            timestamp: Date.now()
+          }).catch(() => {});
+        } else {
+          const sentRelation = relations.find(r => r.userId === friendId && r.friendId === myId && r.status === 'pending');
+          if (sentRelation) {
+            sentRelation.status = 'accepted';
+            await friendsDB.put(sentRelation);
+            await friendsDB.put({
+              _id: `friend_${myId}_${friendId}_${Date.now()}`,
+              userId: myId,
+              friendId,
+              status: 'accepted',
+              remark: null,
+              timestamp: Date.now()
+            }).catch(() => {});
+          }
+        }
+        renderContacts(container);
+      });
+    });
+
+    document.querySelectorAll('.decline[data-friendid]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const friendId = btn.dataset.friendid;
+        const relation = relations.find(r => r.friendId === myId && r.userId === friendId && r.status === 'pending');
+        if (relation) {
+          await friendsDB.remove(relation);
+        }
+        renderContacts(container);
+      });
+    });
+
+    document.querySelectorAll('.add-friend').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const friendId = btn.dataset.friendid;
+        await friendsDB.put({
+          _id: `friend_${myId}_${friendId}_${Date.now()}`,
+          userId: myId,
+          friendId,
+          status: 'pending',
+          requester: myId,
+          timestamp: Date.now()
+        });
+        renderContacts(container);
+      });
+    });
+
+    document.querySelectorAll('.remark-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const friendId = btn.dataset.friendid;
+        const myRelation = relations.find(r => r.userId === myId && r.friendId === friendId && r.status === 'accepted');
+        if (!myRelation) return;
+        const newRemark = prompt('请输入备注名', myRelation.remark || '');
+        if (newRemark !== null) {
+          myRelation.remark = newRemark;
+          await friendsDB.put(myRelation);
+          const sessionId = `session_${myId}_${friendId}`;
+          try {
+            const session = await sessionsDB.get(sessionId);
+            session.remark = newRemark;
+            await sessionsDB.put(session);
+          } catch (err) {}
+          renderContacts(container);
+        }
+      });
+    });
+
+    document.querySelectorAll('.chat-now').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const friendItem = e.target.closest('.friend-item');
+        const friendId = friendItem.dataset.friendid;
+        const remark = friendItem.dataset.remark;
+        selectedFriend = { type: 'private', friendId, remark };
+        currentTab = 'chat';
+        renderMain();
+      });
+    });
+
+    document.querySelectorAll('.decline[data-friendid]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('确定删除好友？')) return;
+        const friendId = btn.dataset.friendid;
+        const toDelete = relations.filter(r => 
+          (r.userId === myId && r.friendId === friendId && r.status === 'accepted') ||
+          (r.userId === friendId && r.friendId === myId && r.status === 'accepted')
+        );
+        for (let doc of toDelete) {
+          await friendsDB.remove(doc);
+        }
+        const sessionId = `session_${myId}_${friendId}`;
+        try {
+          const session = await sessionsDB.get(sessionId);
+          session.visible = false;
+          await sessionsDB.put(session);
+        } catch (err) {}
+        renderContacts(container);
+      });
+    });
+  }
+
+  function showCreateGroupModal(container) {
+    (async () => {
+      const relations = await friendsDB.allDocs({ include_docs: true }).then(res => res.rows.map(r => r.doc));
+      const myId = currentUser._id;
+      const friends = relations.filter(r => r.userId === myId && r.status === 'accepted').map(r => r.friendId);
+      const friendUsers = [];
+      for (let f of friends) {
+        const user = await employeesDB.get(f).catch(() => null);
+        if (user) friendUsers.push(user);
+      }
+
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = `
+        <div class="modal-content">
+          <h3>创建群聊</h3>
+          <input type="text" id="group-name" placeholder="群名称" style="width:100%; padding:8px; margin-bottom:10px;">
+          <div id="member-list" style="max-height:300px; overflow-y:auto;">
+            ${friendUsers.map(u => `
+              <div class="member-item">
+                <input type="checkbox" value="${u._id}">
+                <span>${u.nickname || u.username}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="modal-actions">
+            <button id="create-group-confirm">创建</button>
+            <button id="create-group-cancel">取消</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      document.getElementById('create-group-confirm').onclick = async () => {
+        const groupName = document.getElementById('group-name').value.trim();
+        if (!groupName) { alert('请输入群名称'); return; }
+        const checkboxes = document.querySelectorAll('#member-list input:checked');
+        if (checkboxes.length < 2) { alert('请至少选择2个好友'); return; }
+        const members = Array.from(checkboxes).map(cb => cb.value);
+        members.push(currentUser._id);
+
+        const groupId = `group_${Date.now()}`;
+        await groupsDB.put({
+          _id: groupId,
+          name: groupName,
+          creator: currentUser._id,
+          createdAt: Date.now(),
+          avatar: ''
+        });
+        for (let uid of members) {
+          await groupMembersDB.put({
+            _id: `gm_${groupId}_${uid}`,
+            groupId,
+            userId: uid,
+            role: uid === currentUser._id ? 'owner' : 'member'
+          });
+        }
+        document.body.removeChild(modal);
+        renderContacts(container);
+      };
+      document.getElementById('create-group-cancel').onclick = () => {
+        document.body.removeChild(modal);
+      };
+    })();
+  }
+
+  // ---------- 图书馆 ----------
+  async function renderLibrary(container) {
+    const defaultLinks = [
+      { name: '我的课程', url: 'https://satoko-ashe.github.io/zhiyun/' },
+      { name: '我的题库', url: 'https://satoko-ashe.github.io/zhiyun/' },
+      { name: '浏览器', url: 'https://www.baidu.com/' },
+      { name: '朋友圈', url: '#' },
+      { name: 'QQ邮箱', url: 'https://mail.qq.com/' },
+      { name: '智能AI', url: 'https://www.deepseek.com/' },
+      { name: '在线修图', url: 'https://www.gaitubao.com/' },
+    ];
+    const bookmarks = await bookmarksDB.allDocs({ include_docs: true }).then(res => res.rows.map(r => r.doc).filter(b => b.userId === currentUser._id));
+
+    container.innerHTML = `
+      <div class="library-container">
+        <div class="library-header">
+          <h2>图书馆</h2>
+          <button id="add-bookmark" class="create-group-btn">➕新增</button>
+        </div>
+        <div class="default-links">
+          ${defaultLinks.map(l => `<a href="${l.url}" target="_blank" class="link-item">${l.name}</a>`).join('')}
+        </div>
+        <h3>我的收藏</h3>
+        <div id="bookmark-list">
+          ${bookmarks.map(b => `
+            <div class="bookmark-wrapper" data-id="${b._id}">
+              <a href="${b.url}" target="_blank" class="link-item">${b.name}</a>
+              <div class="item-actions">
+                <button class="edit-bookmark">✎</button>
+                <button class="delete-bookmark">🗑️</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    document.getElementById('add-bookmark').onclick = () => showBookmarkModal(null);
+    document.querySelectorAll('.edit-bookmark').forEach(btn => {
+      btn.onclick = (e) => {
+        const id = e.target.closest('.bookmark-wrapper').dataset.id;
+        showBookmarkModal(id);
+      };
+    });
+    document.querySelectorAll('.delete-bookmark').forEach(btn => {
+      btn.onclick = async (e) => {
+        const id = e.target.closest('.bookmark-wrapper').dataset.id;
+        const doc = await bookmarksDB.get(id);
+        await bookmarksDB.remove(doc);
+        renderLibrary(container);
+      };
+    });
+
+    async function showBookmarkModal(id) {
+      let doc = null;
+      if (id) doc = await bookmarksDB.get(id);
+      const name = prompt('输入名称', doc ? doc.name : '');
+      const url = prompt('输入网址', doc ? doc.url : '');
+      if (name && url) {
+        if (doc) {
+          doc.name = name;
+          doc.url = url;
+          await bookmarksDB.put(doc);
+        } else {
+          await bookmarksDB.put({
+            _id: `bookmark_${currentUser._id}_${Date.now()}`,
+            userId: currentUser._id,
+            name,
+            url,
+            tags: []
+          });
+        }
+        renderLibrary(container);
+      }
+    }
+  }
+
+  // ---------- 个人设置 ----------
+  async function renderProfile(container) {
+    container.innerHTML = `
+      <div class="profile-container">
+        <div class="profile-header">
+          <div class="avatar private" style="background-image: url(${currentUser.avatar || ''}); background-size: cover;">${!currentUser.avatar ? (currentUser.nickname?.[0] || currentUser.username[0]) : ''}</div>
+          <div class="profile-info">
+            <h3>${currentUser.nickname || currentUser.username}</h3>
+            <p>${currentUser.email || ''}</p>
+            <p>用户名：${currentUser.username}</p>
+          </div>
+          <button id="edit-profile" class="edit-btn">编辑</button>
+        </div>
+        <div class="section">
+          <h3>修改密码</h3>
+          <input type="password" id="old-password" placeholder="旧密码">
+          <input type="password" id="new-password" placeholder="新密码">
+          <button id="change-pwd">确认修改</button>
+        </div>
+        <button class="logout-btn" id="logout">退出登录</button>
+      </div>
+    `;
+
+    document.getElementById('edit-profile').onclick = () => {
+      const newNick = prompt('输入新昵称', currentUser.nickname || currentUser.username);
+      if (newNick) {
+        employeesDB.get(currentUser._id).then(doc => {
+          doc.nickname = newNick;
+          return employeesDB.put(doc);
+        }).then(() => {
+          currentUser.nickname = newNick;
+          renderProfile(container);
+        });
+      }
+    };
+
+    document.getElementById('change-pwd').onclick = async () => {
+      const old = document.getElementById('old-password').value;
+      const newPwd = document.getElementById('new-password').value;
+      const doc = await employeesDB.get(currentUser._id);
+      if (doc.password !== old) {
+        alert('旧密码错误');
+        return;
+      }
+      doc.password = newPwd;
+      await employeesDB.put(doc);
+      alert('修改成功');
+    };
+
+    document.getElementById('logout').onclick = () => {
+      localStorage.removeItem('chatUser');
+      currentUser = null;
+      selectedFriend = null;
+      renderLogin();
+    };
+  }
+
+  // 启动
+  renderLogin();
+</script>
+</body>
+</html>
