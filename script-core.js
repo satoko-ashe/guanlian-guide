@@ -7,7 +7,7 @@ let tickerAnimationId = null;
 let currentTickerWidth = 0;
 
 // CouchDB 配置
-const COUCHDB_URL = 'http://satoko:1793364876@localhost:5984'; // 请替换为您的实际地址
+const COUCHDB_URL = 'http://satoko:1793364876@192.168.5.4:5984'; // 请替换为您的实际地址
 const HOTNEWS_DB = 'hotnews';
 const HOTNEWS_DOC_ID = 'current_news'; // 固定文档ID存储新闻数组
 

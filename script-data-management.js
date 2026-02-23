@@ -30,7 +30,7 @@ let bookshelfData = JSON.parse(localStorage.getItem('bookshelfData')) ||
     (typeof BOOKMARK_DATA !== 'undefined' && BOOKMARK_DATA.bookshelfData ? BOOKMARK_DATA.bookshelfData : []);
 
 // ==================== CouchDB 配置 ====================
-const COUCHDB_URL = 'http://satoko:1793364876@localhost:5984'; // 请替换为您的实际地址
+const COUCHDB_URL = 'http://satoko:1793364876@192.168.5.4:5984'; // 请替换为您的实际地址
 const HOTNEWS_DB = 'hotnews';
 const HOTNEWS_DOC_ID = 'current_news';
 
